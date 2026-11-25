@@ -25,12 +25,15 @@ import {
   Phone,
   CreditCard,
   Truck,
-  Image as ImageIcon,
-  CheckCircle2
+  ChevronDown,
+  CheckCircle2,
+  Copy,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
 import Link from 'next/link';
 
-// Curated sample Kerala product photo presets for quick 1-click catalog creation
+// Curated sample Kerala product photo presets
 const PRODUCT_IMAGE_PRESETS = [
   {
     name: 'Mango Pickle',
@@ -79,12 +82,27 @@ export default function DashboardPage() {
   const [user, setUser] = useState<GoogleUser | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'template' | 'products' | 'settings' | 'share'>('template');
+  const [isCreateStoreModalOpen, setIsCreateStoreModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'template' | 'products' | 'settings'>('template');
   
-  const [store, setStore] = useState<Store | null>(null);
+  const [userStores, setUserStores] = useState<Store[]>([]);
+  const [currentStore, setCurrentStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  // New Store Form State
+  const [newStoreForm, setNewStoreForm] = useState({
+    name: '',
+    slug: '',
+    tagline: '',
+    whatsappNumber: '919846000000',
+    upiId: '',
+    templateId: 'kerala-heritage' as TemplateId,
+    flatFee: 50,
+    freeAboveThreshold: 500
+  });
 
   // Product modal state
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -92,12 +110,37 @@ export default function DashboardPage() {
   const [productForm, setProductForm] = useState({
     name: '',
     description: '',
-    price: 0,
+    price: 150,
     unit: '500 gm',
     imageUrl: PRODUCT_IMAGE_PRESETS[0].url,
     category: 'General',
     inStock: true
   });
+
+  // Fetch stores for logged in user
+  const loadUserStores = async (email: string) => {
+    try {
+      const res = await fetch(`/api/stores?ownerEmail=${encodeURIComponent(email)}`);
+      const stores: Store[] = await res.json();
+      setUserStores(stores);
+      if (stores.length > 0) {
+        // Keep current selected store if exists, otherwise first store
+        setCurrentStore((prev) => {
+          if (prev) {
+            const found = stores.find((s) => s.id === prev.id);
+            if (found) return found;
+          }
+          return stores[0];
+        });
+      } else {
+        setCurrentStore(null);
+      }
+    } catch (err) {
+      console.error('Failed to load stores:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const currentUser = getStoredUser();
@@ -109,71 +152,12 @@ export default function DashboardPage() {
       return;
     }
 
-    // Load store for current user
-    fetch(`/api/stores?ownerEmail=${encodeURIComponent(currentUser.email)}`)
-      .then((res) => res.json())
-      .then((stores: Store[]) => {
-        if (stores && stores.length > 0) {
-          setStore(stores[0]);
-        } else {
-          // Create initial starter store for new user
-          const defaultSlug = currentUser.name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-store';
-          const newStore: Store = {
-            id: `store-${Date.now()}`,
-            slug: defaultSlug,
-            name: `${currentUser.name}'s Store`,
-            tagline: 'Handmade & authentic products from Kerala',
-            description: 'Direct WhatsApp ordering with UPI payments. Shipped with love across Kerala.',
-            whatsappNumber: '919495000000',
-            upiId: `${currentUser.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@okaxis`,
-            upiName: currentUser.name,
-            ownerEmail: currentUser.email,
-            ownerName: currentUser.name,
-            ownerAvatar: currentUser.avatar,
-            templateId: 'kerala-heritage',
-            logoUrl: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=200&auto=format&fit=crop&q=80',
-            deliverySettings: {
-              flatFee: 50,
-              freeAboveThreshold: 500,
-              deliveryNotes: 'Speed Post / Courier dispatch within 24-48 hours'
-            },
-            products: [
-              {
-                id: 'prod-init-1',
-                name: 'Homemade Kerala Pickle',
-                description: 'Prepared fresh with grandma recipe and organic ingredients.',
-                price: 180,
-                unit: '500 gm',
-                imageUrl: PRODUCT_IMAGE_PRESETS[0].url,
-                inStock: true,
-                category: 'Pickles'
-              },
-              {
-                id: 'prod-init-2',
-                name: 'Crispy Nendran Banana Chips',
-                description: 'Fried in pure coconut oil with fresh turmeric and salt.',
-                price: 190,
-                unit: '500 gm',
-                imageUrl: PRODUCT_IMAGE_PRESETS[2].url,
-                inStock: true,
-                category: 'Snacks'
-              }
-            ],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-          setStore(newStore);
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Failed to load store:', err);
-        setLoading(false);
-      });
+    loadUserStores(currentUser.email);
   }, []);
 
+  // Save current store changes
   const handleSaveStore = async (updatedStore?: Store) => {
-    const target = updatedStore || store;
+    const target = updatedStore || currentStore;
     if (!target) return;
 
     setSaving(true);
@@ -189,7 +173,8 @@ export default function DashboardPage() {
         return;
       }
       const saved = await res.json();
-      setStore(saved);
+      setCurrentStore(saved);
+      setUserStores((prev) => prev.map((s) => (s.id === saved.id ? saved : s)));
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
@@ -200,10 +185,92 @@ export default function DashboardPage() {
     }
   };
 
+  // Create new store wizard submit
+  const handleCreateNewStore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setSaving(true);
+    const cleanSlug = newStoreForm.slug
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    const newStore: Store = {
+      id: `store-${cleanSlug}-${Date.now().toString().slice(-4)}`,
+      slug: cleanSlug,
+      name: newStoreForm.name,
+      tagline: newStoreForm.tagline || 'Homemade & handcrafted with love from Kerala',
+      description: 'Order directly via WhatsApp with instant UPI payment. Fast dispatch across Kerala.',
+      whatsappNumber: newStoreForm.whatsappNumber,
+      upiId: newStoreForm.upiId || `${cleanSlug}@okaxis`,
+      upiName: newStoreForm.name,
+      ownerEmail: user.email,
+      ownerName: user.name,
+      ownerAvatar: user.avatar,
+      templateId: newStoreForm.templateId,
+      logoUrl: PRODUCT_IMAGE_PRESETS[0].url,
+      deliverySettings: {
+        flatFee: Number(newStoreForm.flatFee),
+        freeAboveThreshold: Number(newStoreForm.freeAboveThreshold),
+        deliveryNotes: 'Speed Post / Courier dispatch within 24-48 hours'
+      },
+      products: [
+        {
+          id: `prod-${Date.now()}-1`,
+          name: `${newStoreForm.name} Special Item 1`,
+          description: 'Our bestselling handcrafted specialty prepared fresh on order.',
+          price: 250,
+          unit: '500 gm',
+          imageUrl: PRODUCT_IMAGE_PRESETS[0].url,
+          inStock: true,
+          category: 'Specialty'
+        },
+        {
+          id: `prod-${Date.now()}-2`,
+          name: `${newStoreForm.name} Special Item 2`,
+          description: 'Authentic Kerala traditional recipe made with premium natural ingredients.',
+          price: 180,
+          unit: 'Pack of 1',
+          imageUrl: PRODUCT_IMAGE_PRESETS[2].url,
+          inStock: true,
+          category: 'Specialty'
+        }
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      const res = await fetch('/api/stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newStore)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || 'Failed to create store. Slug might be taken.');
+        return;
+      }
+      const savedStore = await res.json();
+      setUserStores((prev) => [savedStore, ...prev]);
+      setCurrentStore(savedStore);
+      setIsCreateStoreModalOpen(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to create store:', err);
+      alert('Network error creating store.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleTemplateChange = (templateId: TemplateId) => {
-    if (!store) return;
-    const updated = { ...store, templateId };
-    setStore(updated);
+    if (!currentStore) return;
+    const updated = { ...currentStore, templateId };
+    setCurrentStore(updated);
     handleSaveStore(updated);
   };
 
@@ -212,7 +279,7 @@ export default function DashboardPage() {
     setProductForm({
       name: '',
       description: '',
-      price: 150,
+      price: 180,
       unit: '500 gm',
       imageUrl: PRODUCT_IMAGE_PRESETS[0].url,
       category: 'General',
@@ -237,18 +304,14 @@ export default function DashboardPage() {
 
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!store) return;
+    if (!currentStore) return;
 
-    let updatedProducts = [...store.products];
+    let updatedProducts = [...currentStore.products];
 
     if (editingProduct) {
       updatedProducts = updatedProducts.map((p) =>
         p.id === editingProduct.id
-          ? {
-              ...p,
-              ...productForm,
-              price: Number(productForm.price)
-            }
+          ? { ...p, ...productForm, price: Number(productForm.price) }
           : p
       );
     } else {
@@ -260,32 +323,40 @@ export default function DashboardPage() {
       updatedProducts.push(newProduct);
     }
 
-    const updatedStore = { ...store, products: updatedProducts };
-    setStore(updatedStore);
+    const updatedStore = { ...currentStore, products: updatedProducts };
+    setCurrentStore(updatedStore);
     handleSaveStore(updatedStore);
     setIsProductModalOpen(false);
   };
 
   const handleDeleteProduct = (productId: string) => {
-    if (!store) return;
+    if (!currentStore) return;
     if (!confirm('Are you sure you want to remove this product?')) return;
 
     const updatedStore = {
-      ...store,
-      products: store.products.filter((p) => p.id !== productId)
+      ...currentStore,
+      products: currentStore.products.filter((p) => p.id !== productId)
     };
-    setStore(updatedStore);
+    setCurrentStore(updatedStore);
     handleSaveStore(updatedStore);
   };
 
   const handleToggleStock = (productId: string) => {
-    if (!store) return;
-    const updatedProducts = store.products.map((p) =>
+    if (!currentStore) return;
+    const updatedProducts = currentStore.products.map((p) =>
       p.id === productId ? { ...p, inStock: !p.inStock } : p
     );
-    const updatedStore = { ...store, products: updatedProducts };
-    setStore(updatedStore);
+    const updatedStore = { ...currentStore, products: updatedProducts };
+    setCurrentStore(updatedStore);
     handleSaveStore(updatedStore);
+  };
+
+  const handleCopyLink = () => {
+    if (!currentStore || typeof window === 'undefined') return;
+    const url = `${window.location.origin}/store/${currentStore.slug}`;
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   if (loading) {
@@ -299,20 +370,21 @@ export default function DashboardPage() {
     );
   }
 
+  // Not logged in view
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center space-y-4">
-          <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-            <StoreIcon className="w-7 h-7" />
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-sm border border-slate-200 text-center space-y-4">
+          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto">
+            <StoreIcon className="w-8 h-8" />
           </div>
-          <h2 className="text-xl font-bold text-slate-800">Sign in to Manage Store</h2>
+          <h2 className="text-2xl font-extrabold text-slate-900">Sign in to KadaLink</h2>
           <p className="text-xs text-slate-600 leading-relaxed">
-            Please log in with your Google account to edit your WhatsApp store, manage listings, and change templates.
+            Log in with your Google account to create your custom WhatsApp store or edit your existing products, prices, and templates anytime.
           </p>
           <button
             onClick={() => setIsAuthModalOpen(true)}
-            className="w-full py-3 px-4 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 flex items-center justify-center gap-2 shadow-sm"
+            className="w-full py-3.5 px-4 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 flex items-center justify-center gap-2 shadow-sm transition-all"
           >
             Sign in with Google
           </button>
@@ -320,51 +392,301 @@ export default function DashboardPage() {
         <GoogleSignInModal
           isOpen={isAuthModalOpen}
           onClose={() => setIsAuthModalOpen(false)}
-          onSuccess={(u) => setUser(u)}
+          onSuccess={(u) => {
+            setUser(u);
+            loadUserStores(u.email);
+          }}
         />
       </div>
     );
   }
 
-  if (!store) return null;
+  // User logged in but has no stores yet -> Show "Create First Store" Onboarding
+  if (!currentStore || userStores.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col">
+        {/* Header */}
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 font-black text-slate-900 text-lg">
+            <span className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-sm font-black">
+              K
+            </span>
+            <span>KadaLink Kerala</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <img src={user.avatar} alt={user.name} className="w-7 h-7 rounded-full border border-slate-200" />
+              <span className="text-xs font-semibold text-slate-700 hidden sm:inline">{user.name}</span>
+            </div>
+            <button
+              onClick={() => {
+                clearStoredUser();
+                router.push('/');
+              }}
+              className="text-xs text-slate-500 hover:text-rose-600 font-semibold"
+            >
+              Sign out
+            </button>
+          </div>
+        </header>
+
+        {/* Create Store Prompt */}
+        <div className="max-w-2xl w-full mx-auto p-6 my-auto space-y-6">
+          <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm text-center space-y-4">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto">
+              <Sparkles className="w-8 h-8" />
+            </div>
+            <h2 className="text-2xl font-extrabold text-slate-900">
+              Welcome, {user.name.split(' ')[0]}!
+            </h2>
+            <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+              You haven't created a WhatsApp store website yet. Let's create your first store in 60 seconds with your custom link, template, and UPI receiver!
+            </p>
+            <button
+              onClick={() => {
+                setNewStoreForm({
+                  name: `${user.name.split(' ')[0]}'s Store`,
+                  slug: `${user.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-store`,
+                  tagline: 'Handmade & authentic products from Kerala',
+                  whatsappNumber: '919846000000',
+                  upiId: `${user.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@okaxis`,
+                  templateId: 'kerala-heritage',
+                  flatFee: 50,
+                  freeAboveThreshold: 500
+                });
+                setIsCreateStoreModalOpen(true);
+              }}
+              className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 inline-flex items-center gap-2 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              Create My Store Now
+            </button>
+          </div>
+        </div>
+
+        {/* Create Store Modal */}
+        {renderCreateStoreModal()}
+      </div>
+    );
+  }
+
+  // Active Store URL
+  const storeShareableUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/store/${currentStore.slug}`
+    : `/store/${currentStore.slug}`;
+
+  function renderCreateStoreModal() {
+    if (!isCreateStoreModalOpen) return null;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+        <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-xl w-full overflow-hidden">
+          <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
+            <div className="flex items-center gap-2">
+              <StoreIcon className="w-5 h-5 text-emerald-600" />
+              <h3 className="font-extrabold text-slate-800 text-base">Create New WhatsApp Store</h3>
+            </div>
+            <button
+              onClick={() => setIsCreateStoreModalOpen(false)}
+              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200"
+            >
+              ✕
+            </button>
+          </div>
+
+          <form onSubmit={handleCreateNewStore} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Store / Business Name *</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Malabar Pickles, Kochi Sweet Studio, Nila Silks"
+                value={newStoreForm.name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const autoSlug = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+                  setNewStoreForm({ ...newStoreForm, name, slug: autoSlug });
+                }}
+                className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Custom Shareable Link Slug *
+              </label>
+              <div className="flex items-center">
+                <span className="text-xs text-slate-400 bg-slate-100 px-3 py-2.5 border border-r-0 border-slate-300 rounded-l-xl font-mono">
+                  /store/
+                </span>
+                <input
+                  type="text"
+                  required
+                  placeholder="my-shop-name"
+                  value={newStoreForm.slug}
+                  onChange={(e) =>
+                    setNewStoreForm({
+                      ...newStoreForm,
+                      slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-')
+                    })
+                  }
+                  className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-r-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono font-semibold text-slate-800"
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">This will be your shareable Instagram bio link.</p>
+            </div>
+
+            {/* Template Selector in Wizard */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-2">
+                Choose Website Theme Template *
+              </label>
+              <div className="grid grid-cols-2 gap-2.5">
+                {(Object.keys(TEMPLATES) as TemplateId[]).map((tId) => {
+                  const t = TEMPLATES[tId];
+                  const isSelected = newStoreForm.templateId === tId;
+                  return (
+                    <button
+                      type="button"
+                      key={tId}
+                      onClick={() => setNewStoreForm({ ...newStoreForm, templateId: tId })}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        isSelected
+                          ? 'border-emerald-600 ring-2 ring-emerald-500/20 bg-emerald-50/50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${t.badgeClass}`}>
+                        {t.badge.split('for ')[1] || t.name}
+                      </span>
+                      <h4 className="font-bold text-xs text-slate-800 mt-1">{t.name}</h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{t.tagline}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  WhatsApp Number (Orders Recipient) *
+                </label>
+                <input
+                  type="tel"
+                  required
+                  placeholder="919495123456"
+                  value={newStoreForm.whatsappNumber}
+                  onChange={(e) => setNewStoreForm({ ...newStoreForm, whatsappNumber: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                />
+                <span className="text-[9px] text-slate-400">Include country code 91</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Merchant UPI ID (GPay / PhonePe) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="shop@okaxis"
+                  value={newStoreForm.upiId}
+                  onChange={(e) => setNewStoreForm({ ...newStoreForm, upiId: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                />
+                <span className="text-[9px] text-slate-400">For instant customer QR payments</span>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateStoreModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+              >
+                {saving ? 'Creating Store...' : 'Launch Store & Get Link'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Top Bar */}
+      {/* Top Header */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 px-4 sm:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-black text-sm">
               K
             </div>
-            <span className="font-extrabold text-slate-900 text-sm hidden sm:inline">KadaLink Admin</span>
+            <span className="font-extrabold text-slate-900 text-sm hidden sm:inline">KadaLink</span>
           </Link>
           <span className="text-slate-300">/</span>
-          <span className="font-bold text-slate-800 text-sm truncate max-w-[160px] sm:max-w-xs">
-            {store.name}
-          </span>
+
+          {/* Store Switcher Dropdown */}
+          <div className="relative group">
+            <select
+              value={currentStore.id}
+              onChange={(e) => {
+                const selected = userStores.find((s) => s.id === e.target.value);
+                if (selected) setCurrentStore(selected);
+              }}
+              className="text-xs font-extrabold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 py-1.5 px-3 rounded-xl focus:outline-none cursor-pointer"
+            >
+              {userStores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.slug})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={() => {
+              setNewStoreForm({
+                name: '',
+                slug: '',
+                tagline: '',
+                whatsappNumber: currentStore.whatsappNumber || '919846000000',
+                upiId: '',
+                templateId: 'kerala-heritage',
+                flatFee: 50,
+                freeAboveThreshold: 500
+              });
+              setIsCreateStoreModalOpen(true);
+            }}
+            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>New Store</span>
+          </button>
         </div>
 
+        {/* Right header actions */}
         <div className="flex items-center gap-2.5">
           {saveSuccess && (
             <span className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full animate-fadeIn">
-              <Check className="w-3.5 h-3.5" /> Changes Saved
+              <Check className="w-3.5 h-3.5" /> Saved Live!
             </span>
           )}
 
-          <button
-            onClick={() => setIsShareModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-semibold transition-colors"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>Share Link</span>
-          </button>
-
           <a
-            href={`/store/${store.slug}`}
+            href={`/store/${currentStore.slug}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-sm transition-colors"
           >
             <span>Live Store</span>
             <ExternalLink className="w-3.5 h-3.5" />
@@ -390,45 +712,65 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Main Dashboard Layout */}
+      {/* Main Container */}
       <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 space-y-6">
-        {/* Custom Shareable Link Quick Banner */}
-        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="space-y-1">
+        {/* CUSTOM SHAREABLE LINK HERO CARD */}
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-slate-900 text-white rounded-3xl p-6 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+          <div className="space-y-1.5 flex-1">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-200" />
-              <h3 className="font-bold text-sm">Your Store is Live & Shareable!</h3>
+              <span className="px-2 py-0.5 rounded-md bg-emerald-400/20 text-emerald-200 text-[10px] font-extrabold uppercase tracking-wider border border-emerald-400/30">
+                Your Shareable Store Link
+              </span>
+              <span className="text-xs text-emerald-200">Live 24/7 for Customers</span>
             </div>
-            <p className="text-xs text-emerald-100">
-              Customers can order with zero login and pay via UPI directly to your WhatsApp.
-            </p>
-            <div className="font-mono text-xs bg-black/20 px-3 py-1.5 rounded-lg inline-block text-emerald-100 font-semibold mt-1">
-              {typeof window !== 'undefined' ? `${window.location.origin}/store/${store.slug}` : `/store/${store.slug}`}
+            <h2 className="text-xl font-black text-white">{currentStore.name}</h2>
+            
+            {/* The Link with Copy Button */}
+            <div className="flex items-center gap-2 pt-1 max-w-xl">
+              <div className="flex-1 bg-black/30 border border-white/20 rounded-xl px-3 py-2 text-xs font-mono text-emerald-100 truncate">
+                {storeShareableUrl}
+              </div>
+              <button
+                onClick={handleCopyLink}
+                className="px-3.5 py-2 bg-white text-slate-900 hover:bg-emerald-50 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 flex-shrink-0"
+              >
+                {copiedLink ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy Link</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2.5 w-full md:w-auto">
             <button
               onClick={() => setIsShareModalOpen(true)}
-              className="flex-1 sm:flex-initial px-4 py-2 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5"
+              className="flex-1 md:flex-initial px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center justify-center gap-1.5"
             >
-              <Share2 className="w-3.5 h-3.5" />
-              Share / QR Code
+              <Share2 className="w-4 h-4" />
+              <span>Share & QR Code</span>
             </button>
             <a
-              href={`/store/${store.slug}`}
+              href={`/store/${currentStore.slug}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5"
+              className="flex-1 md:flex-initial px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 transition-all flex items-center justify-center gap-1.5"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              View Customer View
+              <ExternalLink className="w-4 h-4" />
+              <span>Preview Customer View</span>
             </a>
           </div>
         </div>
 
-        {/* Dashboard Navigation Tabs */}
-        <div className="flex items-center gap-1.5 border-b border-slate-200 overflow-x-auto pb-1">
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1">
           <button
             onClick={() => setActiveTab('template')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
@@ -438,7 +780,7 @@ export default function DashboardPage() {
             }`}
           >
             <Palette className="w-4 h-4" />
-            <span>Select Template</span>
+            <span>Select Template ({TEMPLATES[currentStore.templateId]?.name || 'Template'})</span>
           </button>
 
           <button
@@ -450,7 +792,7 @@ export default function DashboardPage() {
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>Product Catalog ({store.products.length})</span>
+            <span>Manage Products ({currentStore.products.length})</span>
           </button>
 
           <button
@@ -462,7 +804,7 @@ export default function DashboardPage() {
             }`}
           >
             <Settings className="w-4 h-4" />
-            <span>Store Info & UPI</span>
+            <span>Store Details, WhatsApp & UPI</span>
           </button>
         </div>
 
@@ -473,18 +815,18 @@ export default function DashboardPage() {
               <div>
                 <h3 className="text-base font-bold text-slate-800">Select Website Template</h3>
                 <p className="text-xs text-slate-500">
-                  Switch the theme and vibe of your storefront with a single tap. Saves immediately.
+                  Switch the theme and styling of your storefront with a single tap. Saves immediately.
                 </p>
               </div>
-              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full w-fit">
-                Active Theme: {TEMPLATES[store.templateId]?.name || store.templateId}
+              <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full w-fit">
+                Active: {TEMPLATES[currentStore.templateId]?.name || currentStore.templateId}
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(Object.keys(TEMPLATES) as TemplateId[]).map((tId) => {
                 const t = TEMPLATES[tId];
-                const isSelected = store.templateId === tId;
+                const isSelected = currentStore.templateId === tId;
 
                 return (
                   <div
@@ -513,10 +855,9 @@ export default function DashboardPage() {
                       <p className="text-xs text-slate-600 mt-2 leading-relaxed">{t.description}</p>
                     </div>
 
-                    {/* Preview visual card simulation */}
                     <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 p-3 space-y-2">
                       <div className={`p-2 rounded-lg text-xs font-bold ${t.headerBg}`}>
-                        Store Header Preview
+                        Header Preview
                       </div>
                       <div className="flex items-center gap-2">
                         <div className={`w-8 h-8 rounded-lg ${t.previewBg} flex-shrink-0`} />
@@ -541,9 +882,9 @@ export default function DashboardPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-slate-800">Your Product Catalog</h3>
+                <h3 className="text-base font-bold text-slate-800">Products for {currentStore.name}</h3>
                 <p className="text-xs text-slate-500">
-                  Add products, set prices, update descriptions, and toggle stock.
+                  Update descriptions, change prices, toggle stock, or add new items.
                 </p>
               </div>
               <button
@@ -555,23 +896,23 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {store.products.length === 0 ? (
+            {currentStore.products.length === 0 ? (
               <div className="p-12 bg-white rounded-2xl border border-slate-200 text-center space-y-3">
                 <Package className="w-10 h-10 text-slate-300 mx-auto" />
                 <h4 className="font-bold text-slate-700 text-sm">No products listed yet</h4>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Add your first item (e.g. Cut Mango Pickle, Saree, or Chocolate Cake) to start taking WhatsApp orders!
+                  Add items to your catalog so customers can order them on WhatsApp.
                 </p>
                 <button
                   onClick={handleOpenAddProduct}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold"
                 >
-                  Add First Product
+                  Add Product
                 </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {store.products.map((product) => (
+                {currentStore.products.map((product) => (
                   <div
                     key={product.id}
                     className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
@@ -664,7 +1005,7 @@ export default function DashboardPage() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
               >
                 <Save className="w-3.5 h-3.5" />
-                {saving ? 'Saving...' : 'Save All Changes'}
+                {saving ? 'Saving...' : 'Save Settings'}
               </button>
             </div>
 
@@ -674,8 +1015,8 @@ export default function DashboardPage() {
                 <input
                   type="text"
                   required
-                  value={store.name}
-                  onChange={(e) => setStore({ ...store, name: e.target.value })}
+                  value={currentStore.name}
+                  onChange={(e) => setCurrentStore({ ...currentStore, name: e.target.value })}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
@@ -691,10 +1032,10 @@ export default function DashboardPage() {
                   <input
                     type="text"
                     required
-                    value={store.slug}
+                    value={currentStore.slug}
                     onChange={(e) =>
-                      setStore({
-                        ...store,
+                      setCurrentStore({
+                        ...currentStore,
                         slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-')
                       })
                     }
@@ -708,9 +1049,9 @@ export default function DashboardPage() {
               <label className="block text-xs font-semibold text-slate-700 mb-1">Store Tagline</label>
               <input
                 type="text"
-                value={store.tagline}
-                onChange={(e) => setStore({ ...store, tagline: e.target.value })}
-                placeholder="e.g. Traditional homemade Kozhikode pickles made in coconut oil"
+                value={currentStore.tagline}
+                onChange={(e) => setCurrentStore({ ...currentStore, tagline: e.target.value })}
+                placeholder="e.g. Traditional homemade Kozhikode pickles made in pure coconut oil"
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
@@ -719,9 +1060,8 @@ export default function DashboardPage() {
               <label className="block text-xs font-semibold text-slate-700 mb-1">Store Description</label>
               <textarea
                 rows={3}
-                value={store.description}
-                onChange={(e) => setStore({ ...store, description: e.target.value })}
-                placeholder="Explain what makes your products special, your ingredients, or dispatch process..."
+                value={currentStore.description}
+                onChange={(e) => setCurrentStore({ ...currentStore, description: e.target.value })}
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none leading-relaxed"
               />
             </div>
@@ -737,8 +1077,8 @@ export default function DashboardPage() {
                     type="text"
                     required
                     placeholder="e.g. 919495123456"
-                    value={store.whatsappNumber}
-                    onChange={(e) => setStore({ ...store, whatsappNumber: e.target.value })}
+                    value={currentStore.whatsappNumber}
+                    onChange={(e) => setCurrentStore({ ...currentStore, whatsappNumber: e.target.value })}
                     className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
                   />
                 </div>
@@ -755,13 +1095,13 @@ export default function DashboardPage() {
                     type="text"
                     required
                     placeholder="e.g. yourshop@okaxis or 9847000000@paytm"
-                    value={store.upiId}
-                    onChange={(e) => setStore({ ...store, upiId: e.target.value })}
+                    value={currentStore.upiId}
+                    onChange={(e) => setCurrentStore({ ...currentStore, upiId: e.target.value })}
                     className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Used to generate live UPI QR codes for Google Pay, PhonePe, and Paytm.
+                  Generates live UPI QR codes for Google Pay, PhonePe, and Paytm.
                 </p>
               </div>
             </div>
@@ -772,12 +1112,12 @@ export default function DashboardPage() {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Flat Delivery Fee (₹)</label>
                 <input
                   type="number"
-                  value={store.deliverySettings.flatFee}
+                  value={currentStore.deliverySettings.flatFee}
                   onChange={(e) =>
-                    setStore({
-                      ...store,
+                    setCurrentStore({
+                      ...currentStore,
                       deliverySettings: {
-                        ...store.deliverySettings,
+                        ...currentStore.deliverySettings,
                         flatFee: Number(e.target.value)
                       }
                     })
@@ -792,12 +1132,12 @@ export default function DashboardPage() {
                 </label>
                 <input
                   type="number"
-                  value={store.deliverySettings.freeAboveThreshold}
+                  value={currentStore.deliverySettings.freeAboveThreshold}
                   onChange={(e) =>
-                    setStore({
-                      ...store,
+                    setCurrentStore({
+                      ...currentStore,
                       deliverySettings: {
-                        ...store.deliverySettings,
+                        ...currentStore.deliverySettings,
                         freeAboveThreshold: Number(e.target.value)
                       }
                     })
@@ -810,12 +1150,12 @@ export default function DashboardPage() {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Courier / Dispatch Notes</label>
                 <input
                   type="text"
-                  value={store.deliverySettings.deliveryNotes || ''}
+                  value={currentStore.deliverySettings.deliveryNotes || ''}
                   onChange={(e) =>
-                    setStore({
-                      ...store,
+                    setCurrentStore({
+                      ...currentStore,
                       deliverySettings: {
-                        ...store.deliverySettings,
+                        ...currentStore.deliverySettings,
                         deliveryNotes: e.target.value
                       }
                     })
@@ -833,7 +1173,7 @@ export default function DashboardPage() {
                 className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
               >
                 <Save className="w-3.5 h-3.5" />
-                {saving ? 'Saving...' : 'Save Settings'}
+                {saving ? 'Saving...' : 'Save All Settings'}
               </button>
             </div>
           </form>
@@ -843,7 +1183,7 @@ export default function DashboardPage() {
       {/* Product Add / Edit Modal */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
               <h3 className="font-bold text-slate-800 text-sm">
                 {editingProduct ? 'Edit Product' : 'Add New Product'}
@@ -908,7 +1248,7 @@ export default function DashboardPage() {
               {/* Quick Image Preset Selector */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Product Image (Select Kerala Sample or Enter URL)
+                  Product Image (Select Kerala Preset or Enter URL)
                 </label>
                 <div className="grid grid-cols-4 gap-2 mb-2">
                   {PRODUCT_IMAGE_PRESETS.map((preset) => (
@@ -972,13 +1312,16 @@ export default function DashboardPage() {
       )}
 
       {/* Share Store Modal */}
-      {store && (
+      {currentStore && (
         <ShareStoreModal
           isOpen={isShareModalOpen}
           onClose={() => setIsShareModalOpen(false)}
-          store={store}
+          store={currentStore}
         />
       )}
+
+      {/* Create Store Modal */}
+      {renderCreateStoreModal()}
     </div>
   );
 }
