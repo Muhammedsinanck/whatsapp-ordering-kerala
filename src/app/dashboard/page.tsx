@@ -97,7 +97,7 @@ export default function DashboardPage() {
     name: '',
     slug: '',
     tagline: '',
-    whatsappNumber: '919846000000',
+    whatsappNumber: '918281096614',
     upiId: '',
     templateId: 'kerala-heritage' as TemplateId,
     flatFee: 50,
@@ -449,7 +449,7 @@ export default function DashboardPage() {
                   name: `${user.name.split(' ')[0]}'s Store`,
                   slug: `${user.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-store`,
                   tagline: 'Handmade & authentic products from Kerala',
-                  whatsappNumber: '919846000000',
+                  whatsappNumber: '918281096614',
                   upiId: `${user.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@okaxis`,
                   templateId: 'kerala-heritage',
                   flatFee: 50,
@@ -576,7 +576,7 @@ export default function DashboardPage() {
                 <input
                   type="tel"
                   required
-                  placeholder="919495123456"
+                  placeholder="918281096614"
                   value={newStoreForm.whatsappNumber}
                   onChange={(e) => setNewStoreForm({ ...newStoreForm, whatsappNumber: e.target.value })}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
@@ -659,7 +659,7 @@ export default function DashboardPage() {
                 name: '',
                 slug: '',
                 tagline: '',
-                whatsappNumber: currentStore.whatsappNumber || '919846000000',
+                whatsappNumber: currentStore.whatsappNumber || '918281096614',
                 upiId: '',
                 templateId: 'kerala-heritage',
                 flatFee: 50,
@@ -1076,7 +1076,7 @@ export default function DashboardPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. 919495123456"
+                    placeholder="e.g. 918281096614"
                     value={currentStore.whatsappNumber}
                     onChange={(e) => setCurrentStore({ ...currentStore, whatsappNumber: e.target.value })}
                     className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
