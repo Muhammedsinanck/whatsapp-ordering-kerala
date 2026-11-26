@@ -1,27 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleUser } from '@/types';
+import { getUserByEmail, saveUser } from '@/lib/db';
+import { User } from '@/types';
 
-const DEFAULT_GOOGLE_PROFILES: GoogleUser[] = [
-  {
-    id: 'google-sinan-1',
-    email: 'sinan@gmail.com',
-    name: 'Sinan C.K.',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'google-anjali-2',
-    email: 'anjali@gmail.com',
-    name: 'Anjali Nair',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'google-fathima-3',
-    email: 'fathima.boutique@gmail.com',
-    name: 'Fathima Raheem',
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80'
+// Initiates Google OAuth 2.0 flow
+export async function GET(request: NextRequest) {
+  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  const proto = request.headers.get('x-forwarded-proto') || 'http';
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+  const baseUrl = process.env.NEXTAUTH_URL || process.env.APP_URL || `${proto}://${host}`;
+  const redirectUri = `${baseUrl}/api/auth/google/callback`;
+
+  // If credentials are not yet configured in environment variables, redirect with notice
+  if (!clientId || !clientSecret) {
+    return NextResponse.redirect(`${baseUrl}/login?oauth_missing=true`);
   }
-];
 
+  // Construct official Google OAuth 2.0 consent URL
+  const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  googleAuthUrl.searchParams.set('client_id', clientId);
+  googleAuthUrl.searchParams.set('redirect_uri', redirectUri);
+  googleAuthUrl.searchParams.set('response_type', 'code');
+  googleAuthUrl.searchParams.set('scope', 'openid email profile');
+  googleAuthUrl.searchParams.set('access_type', 'offline');
+  googleAuthUrl.searchParams.set('prompt', 'select_account');
+
+  return NextResponse.redirect(googleAuthUrl.toString());
+}
+
+// Programmatic verification & mock/demo sign-in
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -31,14 +39,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    const user: GoogleUser = {
-      id: `google-${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
-      email: email.toLowerCase().trim(),
-      name: name || email.split('@')[0],
-      avatar: avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name || email)}`
-    };
+    const cleanEmail = email.toLowerCase().trim();
+    let existing = getUserByEmail(cleanEmail);
 
-    return NextResponse.json({ success: true, user });
+    if (!existing) {
+      const newUser: User = {
+        id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        email: cleanEmail,
+        name: name || cleanEmail.split('@')[0],
+        avatar: avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name || cleanEmail)}`,
+        createdAt: new Date().toISOString()
+      };
+      saveUser(newUser);
+      existing = newUser;
+    }
+
+    const { password: _, ...sanitizedUser } = existing;
+    const response = NextResponse.json({ success: true, user: sanitizedUser });
+
+    // Also set cookie so session is recognized everywhere
+    response.cookies.set('kadalink_user_session', JSON.stringify(sanitizedUser), {
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60,
+      sameSite: 'lax'
+    });
+
+    return response;
   } catch (error) {
     console.error('Google auth error:', error);
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });

@@ -1,9 +1,42 @@
 import fs from 'fs';
 import path from 'path';
-import { Store } from '@/types';
+import { Store, User } from '@/types';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const isVercel = Boolean(process.env.VERCEL);
+const BUNDLED_DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = isVercel ? path.join('/tmp', 'kadalink-data') : BUNDLED_DATA_DIR;
 const DB_FILE = path.join(DATA_DIR, 'stores.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+
+const INITIAL_USERS: User[] = [
+  {
+    id: 'usr-sinan',
+    email: 'sinan@gmail.com',
+    name: 'Sinan C.K.',
+    phone: '918281096614',
+    password: 'password123',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'usr-anjali',
+    email: 'anjali@gmail.com',
+    name: 'Anjali Nair',
+    phone: '919846012345',
+    password: 'password123',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'usr-fathima',
+    email: 'fathima.boutique@gmail.com',
+    name: 'Fathima Raheem',
+    phone: '919876543210',
+    password: 'password123',
+    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+    createdAt: new Date().toISOString()
+  }
+];
 
 const INITIAL_STORES: Store[] = [
   {
@@ -150,10 +183,28 @@ const INITIAL_STORES: Store[] = [
 
 function ensureDbFile(): void {
   if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch (err) {
+      console.warn('Could not create DATA_DIR:', err);
+    }
   }
   if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(INITIAL_STORES, null, 2), 'utf8');
+    const bundledStoresFile = path.join(BUNDLED_DATA_DIR, 'stores.json');
+    if (fs.existsSync(bundledStoresFile)) {
+      try {
+        const bundled = fs.readFileSync(bundledStoresFile, 'utf8');
+        fs.writeFileSync(DB_FILE, bundled, 'utf8');
+        return;
+      } catch (err) {
+        console.warn('Could not copy bundled stores file:', err);
+      }
+    }
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(INITIAL_STORES, null, 2), 'utf8');
+    } catch (err) {
+      console.error('Error writing DB_FILE:', err);
+    }
   }
 }
 
@@ -211,4 +262,69 @@ export function deleteStore(id: string): boolean {
     return true;
   }
   return false;
+}
+
+// User Authentication & Management Functions
+function ensureUsersDbFile(): void {
+  if (!fs.existsSync(DATA_DIR)) {
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch (err) {
+      console.warn('Could not create DATA_DIR:', err);
+    }
+  }
+  if (!fs.existsSync(USERS_FILE)) {
+    const bundledUsersFile = path.join(BUNDLED_DATA_DIR, 'users.json');
+    if (fs.existsSync(bundledUsersFile)) {
+      try {
+        const bundled = fs.readFileSync(bundledUsersFile, 'utf8');
+        fs.writeFileSync(USERS_FILE, bundled, 'utf8');
+        return;
+      } catch (err) {
+        console.warn('Could not copy bundled users file:', err);
+      }
+    }
+    try {
+      fs.writeFileSync(USERS_FILE, JSON.stringify(INITIAL_USERS, null, 2), 'utf8');
+    } catch (err) {
+      console.error('Error writing USERS_FILE:', err);
+    }
+  }
+}
+
+export function getAllUsers(): User[] {
+  ensureUsersDbFile();
+  try {
+    const data = fs.readFileSync(USERS_FILE, 'utf8');
+    return JSON.parse(data) as User[];
+  } catch (error) {
+    console.error('Error reading users DB:', error);
+    return INITIAL_USERS;
+  }
+}
+
+export function getUserByEmail(email: string): User | null {
+  const users = getAllUsers();
+  const normalized = email.trim().toLowerCase();
+  return users.find(u => u.email.toLowerCase() === normalized) || null;
+}
+
+export function getUserById(id: string): User | null {
+  const users = getAllUsers();
+  return users.find(u => u.id === id) || null;
+}
+
+export function saveUser(user: User): User {
+  ensureUsersDbFile();
+  const users = getAllUsers();
+  const index = users.findIndex(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
+
+  if (index >= 0) {
+    users[index] = { ...users[index], ...user };
+  } else {
+    users.push(user);
+  }
+
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+  return user;
 }

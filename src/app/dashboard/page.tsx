@@ -443,25 +443,13 @@ export default function DashboardPage() {
             <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
               You haven't created a WhatsApp store website yet. Let's create your first store in 60 seconds with your custom link, template, and UPI receiver!
             </p>
-            <button
-              onClick={() => {
-                setNewStoreForm({
-                  name: `${user.name.split(' ')[0]}'s Store`,
-                  slug: `${user.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-store`,
-                  tagline: 'Handmade & authentic products from Kerala',
-                  whatsappNumber: '918281096614',
-                  upiId: `${user.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@okaxis`,
-                  templateId: 'kerala-heritage',
-                  flatFee: 50,
-                  freeAboveThreshold: 500
-                });
-                setIsCreateStoreModalOpen(true);
-              }}
+            <Link
+              href="/onboarding"
               className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 inline-flex items-center gap-2 transition-all"
             >
               <Plus className="w-4 h-4" />
-              Create My Store Now
-            </button>
+              Create My Store in 3 Steps
+            </Link>
           </div>
         </div>
 
@@ -653,25 +641,13 @@ export default function DashboardPage() {
             </select>
           </div>
 
-          <button
-            onClick={() => {
-              setNewStoreForm({
-                name: '',
-                slug: '',
-                tagline: '',
-                whatsappNumber: currentStore.whatsappNumber || '918281096614',
-                upiId: '',
-                templateId: 'kerala-heritage',
-                flatFee: 50,
-                freeAboveThreshold: 500
-              });
-              setIsCreateStoreModalOpen(true);
-            }}
-            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
+          <Link
+            href="/onboarding"
+            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>New Store</span>
-          </button>
+            <span>+ New Store</span>
+          </Link>
         </div>
 
         {/* Right header actions */}

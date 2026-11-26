@@ -53,9 +53,15 @@ export interface CustomerOrderDetails {
   notes?: string;
 }
 
-export interface GoogleUser {
+export interface User {
   id: string;
   email: string;
   name: string;
+  phone?: string;
+  password?: string;
   avatar: string;
+  createdAt?: string;
 }
+
+export type GoogleUser = User;
+export type AuthUser = User;

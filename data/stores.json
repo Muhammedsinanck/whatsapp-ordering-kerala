@@ -138,5 +138,34 @@
     ],
     "createdAt": "2026-11-25T16:49:42.602Z",
     "updatedAt": "2026-11-25T16:49:42.602Z"
+  },
+  {
+    "id": "store-amina-bakes",
+    "slug": "amina-bakes",
+    "name": "Amina Homemade Bakes",
+    "tagline": "Freshly baked brownies and cakes",
+    "description": "WhatsApp ordering",
+    "whatsappNumber": "919846112233",
+    "upiId": "aminabakes@okaxis",
+    "ownerEmail": "amina@test.com",
+    "ownerName": "Amina Test",
+    "templateId": "bakery-fresh",
+    "deliverySettings": {
+      "flatFee": 40,
+      "freeAboveThreshold": 500
+    },
+    "products": [
+      {
+        "id": "p1",
+        "name": "Fudge Brownie Box",
+        "description": "Box of 4",
+        "price": 250,
+        "unit": "Box",
+        "imageUrl": "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=600",
+        "inStock": true
+      }
+    ],
+    "createdAt": "2026-11-26T16:02:51.213Z",
+    "updatedAt": "2026-11-26T16:02:51.213Z"
   }
 ]
