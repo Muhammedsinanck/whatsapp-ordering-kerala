@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getStoreBySlug, saveStore, deleteStore } from '@/lib/db';
+import { getStoreBySlug, getAllStores, saveStore, deleteStore } from '@/lib/db';
 import { Store } from '@/types';
 
 export async function GET(
@@ -27,6 +27,20 @@ export async function PUT(
 
     if (!existing) {
       return NextResponse.json({ error: 'Store not found' }, { status: 404 });
+    }
+
+    // If name is changing, verify the new name is not taken by another store
+    if (body.name && body.name.trim().toLowerCase() !== existing.name.trim().toLowerCase()) {
+      const allStores = await getAllStores();
+      const existingNameStore = allStores.find(
+        (s) => s.name.trim().toLowerCase() === body.name.trim().toLowerCase() && s.id !== existing.id
+      );
+      if (existingNameStore) {
+        return NextResponse.json(
+          { error: `The store name "${body.name.trim()}" is already taken by another store. Please pick a unique name.` },
+          { status: 409 }
+        );
+      }
     }
 
     // If slug is changing, verify the new slug is not taken

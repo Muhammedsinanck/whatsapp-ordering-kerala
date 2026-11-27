@@ -117,8 +117,28 @@ export default function DashboardPage() {
     inStock: true
   });
 
-  // Settings Slug check
+  // Settings Name & Slug check
+  const [settingsNameStatus, setSettingsNameStatus] = useState<'checking' | 'available' | 'taken' | 'idle'>('idle');
+  const [settingsNameError, setSettingsNameError] = useState('');
   const [settingsSlugStatus, setSettingsSlugStatus] = useState<'checking' | 'available' | 'taken' | 'idle'>('idle');
+  const [settingsSlugError, setSettingsSlugError] = useState('');
+
+  // Rename Store Modal state
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [renameForm, setRenameForm] = useState({
+    name: '',
+    slug: '',
+    syncSlug: true
+  });
+  const [renameStatus, setRenameStatus] = useState<{
+    name: 'idle' | 'checking' | 'available' | 'taken';
+    slug: 'idle' | 'checking' | 'available' | 'taken';
+    nameReason?: string;
+    slugReason?: string;
+  }>({
+    name: 'idle',
+    slug: 'idle'
+  });
 
   // Fetch stores for logged in user
   const loadUserStores = async (email: string) => {
@@ -189,19 +209,130 @@ export default function DashboardPage() {
     }
   };
 
+  // Check store name uniqueness
+  const checkSettingsName = async (nameVal: string) => {
+    if (!currentStore || !nameVal || nameVal.trim().length < 2) {
+      setSettingsNameStatus('idle');
+      setSettingsNameError('');
+      return;
+    }
+    if (nameVal.trim().toLowerCase() === currentStore.name.trim().toLowerCase()) {
+      setSettingsNameStatus('available');
+      setSettingsNameError('');
+      return;
+    }
+    setSettingsNameStatus('checking');
+    try {
+      const res = await fetch(
+        `/api/stores/check-slug?name=${encodeURIComponent(nameVal.trim())}&currentStoreId=${encodeURIComponent(currentStore.id)}`
+      );
+      const data = await res.json();
+      if (data.nameAvailable) {
+        setSettingsNameStatus('available');
+        setSettingsNameError('');
+      } else {
+        setSettingsNameStatus('taken');
+        setSettingsNameError(data.nameReason || 'This store name is already taken by another store');
+      }
+    } catch {
+      setSettingsNameStatus('idle');
+    }
+  };
+
   // Check slug uniqueness
   const checkSettingsSlug = async (slugVal: string) => {
-    if (!currentStore || !slugVal || slugVal.length < 3) return;
+    if (!currentStore || !slugVal || slugVal.length < 3) {
+      setSettingsSlugStatus('idle');
+      setSettingsSlugError('');
+      return;
+    }
+    if (slugVal.toLowerCase() === currentStore.slug.toLowerCase()) {
+      setSettingsSlugStatus('available');
+      setSettingsSlugError('');
+      return;
+    }
     setSettingsSlugStatus('checking');
     try {
       const res = await fetch(
         `/api/stores/check-slug?slug=${encodeURIComponent(slugVal)}&currentStoreId=${encodeURIComponent(currentStore.id)}`
       );
       const data = await res.json();
-      setSettingsSlugStatus(data.available ? 'available' : 'taken');
+      if (data.slugAvailable) {
+        setSettingsSlugStatus('available');
+        setSettingsSlugError('');
+      } else {
+        setSettingsSlugStatus('taken');
+        setSettingsSlugError(data.slugReason || 'This handle is already taken by another store');
+      }
     } catch {
       setSettingsSlugStatus('idle');
     }
+  };
+
+  // Open Rename Store Modal
+  const openRenameModal = () => {
+    if (!currentStore) return;
+    setRenameForm({
+      name: currentStore.name,
+      slug: currentStore.slug,
+      syncSlug: true
+    });
+    setRenameStatus({
+      name: 'available',
+      slug: 'available'
+    });
+    setIsRenameModalOpen(true);
+  };
+
+  // Check rename form name and slug
+  const checkRenameForm = async (nameVal: string, slugVal: string) => {
+    if (!currentStore) return;
+    setRenameStatus((prev) => ({ ...prev, name: 'checking', slug: 'checking' }));
+    try {
+      const res = await fetch(
+        `/api/stores/check-slug?name=${encodeURIComponent(nameVal.trim())}&slug=${encodeURIComponent(slugVal.trim())}&currentStoreId=${encodeURIComponent(currentStore.id)}`
+      );
+      const data = await res.json();
+      setRenameStatus({
+        name: data.nameAvailable ? 'available' : 'taken',
+        slug: data.slugAvailable ? 'available' : 'taken',
+        nameReason: data.nameReason,
+        slugReason: data.slugReason
+      });
+    } catch {
+      setRenameStatus({ name: 'idle', slug: 'idle' });
+    }
+  };
+
+  // Handle Rename Submit
+  const handleRenameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentStore) return;
+
+    if (renameStatus.name === 'taken') {
+      alert(renameStatus.nameReason || 'This store name is already taken by another store.');
+      return;
+    }
+    if (renameStatus.slug === 'taken') {
+      alert(renameStatus.slugReason || 'This handle is already taken by another store.');
+      return;
+    }
+
+    const cleanSlug = renameForm.slug
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    const updated: Store = {
+      ...currentStore,
+      name: renameForm.name.trim(),
+      slug: cleanSlug,
+      updatedAt: new Date().toISOString()
+    };
+
+    await handleSaveStore(updated);
+    setIsRenameModalOpen(false);
   };
 
   // Create new store wizard submit
@@ -532,6 +663,16 @@ export default function DashboardPage() {
             </select>
           </div>
 
+          {/* Quick Rename Store Button */}
+          <button
+            onClick={openRenameModal}
+            className="text-[11px] font-bold text-slate-700 hover:text-emerald-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+            title="Change store name & link handle"
+          >
+            <Edit className="w-3.5 h-3.5 text-slate-500" />
+            <span className="hidden sm:inline">Rename</span>
+          </button>
+
           <Link
             href="/onboarding"
             className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors"
@@ -626,6 +767,13 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-2.5 w-full md:w-auto">
+            <button
+              onClick={openRenameModal}
+              className="flex-1 md:flex-initial px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Edit className="w-3.5 h-3.5" />
+              <span>Change Name</span>
+            </button>
             <button
               onClick={() => setIsShareModalOpen(true)}
               className="flex-1 md:flex-initial px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
@@ -808,8 +956,8 @@ export default function DashboardPage() {
               </div>
               <button
                 type="submit"
-                disabled={saving || settingsSlugStatus === 'taken'}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
+                disabled={saving || settingsSlugStatus === 'taken' || settingsNameStatus === 'taken'}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>{saving ? 'Saving...' : 'Save Settings'}</span>
@@ -818,24 +966,77 @@ export default function DashboardPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Store Name *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Store Name *</span>
+                  {settingsNameStatus === 'available' && (
+                    <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Name Available
+                    </span>
+                  )}
+                  {settingsNameStatus === 'taken' && (
+                    <span className="text-[11px] text-rose-600 font-bold flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> Name Taken by Others
+                    </span>
+                  )}
+                  {settingsNameStatus === 'checking' && (
+                    <span className="text-[11px] text-slate-400 font-medium animate-pulse">Checking name...</span>
+                  )}
+                </label>
                 <input
                   type="text"
                   required
                   value={currentStore.name}
-                  onChange={(e) => setCurrentStore({ ...currentStore, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  onChange={(e) => {
+                    const newName = e.target.value;
+                    setCurrentStore({ ...currentStore, name: newName });
+                    checkSettingsName(newName);
+                  }}
+                  className={`w-full px-3.5 py-2.5 text-xs border rounded-xl focus:ring-2 focus:outline-none ${
+                    settingsNameStatus === 'taken'
+                      ? 'border-rose-300 focus:ring-rose-500 bg-rose-50/20'
+                      : settingsNameStatus === 'available'
+                      ? 'border-emerald-300 focus:ring-emerald-500'
+                      : 'border-slate-300 focus:ring-emerald-500'
+                  }`}
                 />
+                {settingsNameStatus === 'taken' && (
+                  <p className="text-[11px] text-rose-600 mt-1 font-semibold">{settingsNameError}</p>
+                )}
+                <div className="mt-1.5 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400">Unique store branding</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const derived = currentStore.name
+                        .toLowerCase()
+                        .replace(/[^a-z0-9-]/g, '-')
+                        .replace(/-+/g, '-')
+                        .replace(/^-|-$/g, '');
+                      setCurrentStore({ ...currentStore, slug: derived });
+                      checkSettingsSlug(derived);
+                    }}
+                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 underline cursor-pointer"
+                  >
+                    Sync Web Link to this Name
+                  </button>
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                   <span>Store Link Handle *</span>
                   {settingsSlugStatus === 'available' && (
-                    <span className="text-[11px] text-emerald-600 font-bold">✓ Handle Available</span>
+                    <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Handle Available
+                    </span>
                   )}
                   {settingsSlugStatus === 'taken' && (
-                    <span className="text-[11px] text-rose-600 font-bold">✗ Handle Already Taken</span>
+                    <span className="text-[11px] text-rose-600 font-bold flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> Handle Already Taken
+                    </span>
+                  )}
+                  {settingsSlugStatus === 'checking' && (
+                    <span className="text-[11px] text-slate-400 font-medium animate-pulse">Checking handle...</span>
                   )}
                 </label>
                 <div className="flex items-center">
@@ -851,9 +1052,18 @@ export default function DashboardPage() {
                       setCurrentStore({ ...currentStore, slug: newSlug });
                       checkSettingsSlug(newSlug);
                     }}
-                    className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-r-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                    className={`w-full px-3.5 py-2.5 text-xs border rounded-r-xl focus:ring-2 focus:outline-none font-mono ${
+                      settingsSlugStatus === 'taken'
+                        ? 'border-rose-300 focus:ring-rose-500 bg-rose-50/20'
+                        : settingsSlugStatus === 'available'
+                        ? 'border-emerald-300 focus:ring-emerald-500'
+                        : 'border-slate-300 focus:ring-emerald-500'
+                    }`}
                   />
                 </div>
+                {settingsSlugStatus === 'taken' && (
+                  <p className="text-[11px] text-rose-600 mt-1 font-semibold">{settingsSlugError}</p>
+                )}
               </div>
             </div>
 
@@ -1204,6 +1414,180 @@ export default function DashboardPage() {
                   className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
                 >
                   {editingProduct ? 'Save Product' : 'Add to Store'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* RENAME STORE MODAL */}
+      {isRenameModalOpen && currentStore && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <Edit className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">Change Store Name</h3>
+                  <p className="text-[11px] text-slate-500">Pick a new name if not taken by other sellers</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsRenameModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRenameSubmit} className="space-y-4">
+              {/* Current details badge */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs space-y-1">
+                <div className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider">Current Active Store:</div>
+                <div className="font-bold text-slate-800">{currentStore.name}</div>
+                <div className="text-slate-500 font-mono text-[11px]">/store/{currentStore.slug}</div>
+              </div>
+
+              {/* New Store Name */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>New Store Name *</span>
+                  {renameStatus.name === 'available' && (
+                    <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Name Available
+                    </span>
+                  )}
+                  {renameStatus.name === 'taken' && (
+                    <span className="text-[11px] text-rose-600 font-bold flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> Already Taken
+                    </span>
+                  )}
+                  {renameStatus.name === 'checking' && (
+                    <span className="text-[11px] text-slate-400 font-medium animate-pulse">Checking...</span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Enter new store name"
+                  value={renameForm.name}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    let nextSlug = renameForm.slug;
+                    if (renameForm.syncSlug) {
+                      nextSlug = val
+                        .toLowerCase()
+                        .replace(/[^a-z0-9-]/g, '-')
+                        .replace(/-+/g, '-')
+                        .replace(/^-|-$/g, '');
+                    }
+                    setRenameForm({ ...renameForm, name: val, slug: nextSlug });
+                    checkRenameForm(val, nextSlug);
+                  }}
+                  className={`w-full px-3.5 py-2.5 text-xs border rounded-xl focus:ring-2 focus:outline-none ${
+                    renameStatus.name === 'taken'
+                      ? 'border-rose-300 focus:ring-rose-500 bg-rose-50/20'
+                      : renameStatus.name === 'available'
+                      ? 'border-emerald-300 focus:ring-emerald-500'
+                      : 'border-slate-300 focus:ring-emerald-500'
+                  }`}
+                />
+                {renameStatus.name === 'taken' && (
+                  <p className="text-[11px] text-rose-600 mt-1 font-semibold">{renameStatus.nameReason}</p>
+                )}
+              </div>
+
+              {/* Auto sync slug checkbox */}
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={renameForm.syncSlug}
+                  onChange={(e) => {
+                    const isChecked = e.target.checked;
+                    let nextSlug = renameForm.slug;
+                    if (isChecked) {
+                      nextSlug = renameForm.name
+                        .toLowerCase()
+                        .replace(/[^a-z0-9-]/g, '-')
+                        .replace(/-+/g, '-')
+                        .replace(/^-|-$/g, '');
+                    }
+                    setRenameForm({ ...renameForm, syncSlug: isChecked, slug: nextSlug });
+                    checkRenameForm(renameForm.name, nextSlug);
+                  }}
+                  className="rounded text-emerald-600 focus:ring-emerald-500"
+                />
+                <span>Also update web address handle to match name</span>
+              </label>
+
+              {/* Store Web Handle */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Store Web Handle *</span>
+                  {renameStatus.slug === 'available' && (
+                    <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Handle Available
+                    </span>
+                  )}
+                  {renameStatus.slug === 'taken' && (
+                    <span className="text-[11px] text-rose-600 font-bold flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> Handle Taken
+                    </span>
+                  )}
+                </label>
+                <div className="flex items-center">
+                  <span className="text-xs text-slate-400 bg-slate-100 px-3 py-2.5 border border-r-0 border-slate-300 rounded-l-xl font-mono">
+                    /store/
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    value={renameForm.slug}
+                    onChange={(e) => {
+                      const newSlug = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                      setRenameForm({ ...renameForm, slug: newSlug, syncSlug: false });
+                      checkRenameForm(renameForm.name, newSlug);
+                    }}
+                    className={`w-full px-3.5 py-2.5 text-xs border rounded-r-xl focus:ring-2 focus:outline-none font-mono ${
+                      renameStatus.slug === 'taken'
+                        ? 'border-rose-300 focus:ring-rose-500 bg-rose-50/20'
+                        : renameStatus.slug === 'available'
+                        ? 'border-emerald-300 focus:ring-emerald-500'
+                        : 'border-slate-300 focus:ring-emerald-500'
+                    }`}
+                  />
+                </div>
+                {renameStatus.slug === 'taken' && (
+                  <p className="text-[11px] text-rose-600 mt-1 font-semibold">{renameStatus.slugReason}</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsRenameModalOpen(false)}
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    saving ||
+                    renameStatus.name === 'taken' ||
+                    renameStatus.slug === 'taken' ||
+                    renameStatus.name === 'checking' ||
+                    renameStatus.slug === 'checking' ||
+                    !renameForm.name.trim() ||
+                    !renameForm.slug.trim()
+                  }
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{saving ? 'Saving...' : 'Save New Store Name'}</span>
                 </button>
               </div>
             </form>

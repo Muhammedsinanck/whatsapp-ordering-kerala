@@ -61,6 +61,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if store name is already taken by someone else
+    const allStores = await getAllStores();
+    const cleanName = body.name.trim();
+    const existingNameStore = allStores.find(
+      (s) => s.name.trim().toLowerCase() === cleanName.toLowerCase() && s.id !== body.id
+    );
+    if (existingNameStore) {
+      return NextResponse.json(
+        {
+          error: `The store name "${cleanName}" is already taken by another store. Please choose a unique store name.`
+        },
+        { status: 409 }
+      );
+    }
+
     // Check if slug is permanently taken by someone else
     const existing = await getStoreBySlug(cleanSlug);
     if (existing && existing.id !== body.id) {

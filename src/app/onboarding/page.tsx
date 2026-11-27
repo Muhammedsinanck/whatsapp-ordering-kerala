@@ -189,7 +189,7 @@ export default function OnboardingPage() {
       .replace(/-+/g, '-')
       .slice(0, 30);
     setSlug(generated);
-    checkSlugAvailability(generated);
+    checkSlugAvailability(generated, val);
   };
 
   const handleSlugChange = (val: string) => {
@@ -201,7 +201,7 @@ export default function OnboardingPage() {
     checkSlugAvailability(clean);
   };
 
-  const checkSlugAvailability = async (slugToCheck: string) => {
+  const checkSlugAvailability = async (slugToCheck: string, nameToCheck?: string) => {
     if (!slugToCheck || slugToCheck.length < 3) {
       setSlugStatus('idle');
       setSlugError('Handle must be at least 3 characters');
@@ -209,14 +209,17 @@ export default function OnboardingPage() {
     }
     setSlugStatus('checking');
     try {
-      const res = await fetch(`/api/stores/check-slug?slug=${encodeURIComponent(slugToCheck)}`);
+      const nameParam = nameToCheck !== undefined ? nameToCheck : storeName;
+      const res = await fetch(
+        `/api/stores/check-slug?slug=${encodeURIComponent(slugToCheck)}&name=${encodeURIComponent(nameParam)}`
+      );
       const data = await res.json();
       if (data.available) {
         setSlugStatus('available');
         setSlugError('');
       } else {
         setSlugStatus('taken');
-        setSlugError(data.reason || 'This handle is already taken by another store');
+        setSlugError(data.reason || data.nameReason || data.slugReason || 'This handle or name is already taken');
       }
     } catch {
       setSlugStatus('idle');
