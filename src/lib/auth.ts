@@ -3,11 +3,12 @@
 import { GoogleUser } from '@/types';
 
 const AUTH_STORAGE_KEY = 'kerala_wa_google_user';
-const ADMIN_KEY_STORAGE = 'kadalink_admin_master_key';
+
+export const PRIMARY_ADMIN_EMAIL = 'ckmuhammedsinan@gmail.com';
 
 export const KNOWN_ADMIN_EMAILS = [
-  'sinan@gmail.com',
   'ckmuhammedsinan@gmail.com',
+  'sinan@gmail.com',
   'ckmuhammedsinan-7412',
   'sinanck@gmail.com'
 ];
@@ -49,7 +50,6 @@ export function getStoredUser(): GoogleUser | null {
 export function setStoredUser(user: GoogleUser): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-  // Sync to cookie as well
   document.cookie = `kadalink_user_session=${encodeURIComponent(
     JSON.stringify(user)
   )}; Path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax`;
@@ -59,32 +59,16 @@ export function setStoredUser(user: GoogleUser): void {
 export function clearStoredUser(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(AUTH_STORAGE_KEY);
-  localStorage.removeItem(ADMIN_KEY_STORAGE);
-  // Clear cookie
   document.cookie = 'kadalink_user_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
   window.dispatchEvent(new Event('auth-state-changed'));
 }
 
 export function isPlatformAdmin(user: GoogleUser | null): boolean {
   if (!user || !user.email) return false;
-  if (user.role === 'admin') return true;
   const cleanEmail = user.email.toLowerCase().trim();
+  if (cleanEmail === PRIMARY_ADMIN_EMAIL) return true;
+  if (user.role === 'admin') return true;
   const envAdmin = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || '').toLowerCase().trim();
   if (envAdmin && cleanEmail === envAdmin) return true;
-  return KNOWN_ADMIN_EMAILS.some((adm) => cleanEmail.includes(adm) || adm.includes(cleanEmail));
-}
-
-export function getAdminMasterKey(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(ADMIN_KEY_STORAGE);
-}
-
-export function setAdminMasterKey(key: string): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(ADMIN_KEY_STORAGE, key.trim());
-}
-
-export function clearAdminMasterKey(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(ADMIN_KEY_STORAGE);
+  return KNOWN_ADMIN_EMAILS.some((adm) => cleanEmail === adm || cleanEmail.includes(adm));
 }

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { getStoredUser, isPlatformAdmin, getAdminMasterKey, setAdminMasterKey, clearAdminMasterKey } from '@/lib/auth';
+import { getStoredUser, clearStoredUser, isPlatformAdmin, PRIMARY_ADMIN_EMAIL } from '@/lib/auth';
 import { GoogleUser, Store, Product } from '@/types';
 import {
   ShieldAlert,
@@ -22,7 +22,6 @@ import {
   Sparkles,
   ArrowRight,
   Eye,
-  Key,
   X,
   Image as ImageIcon
 } from 'lucide-react';
@@ -50,7 +49,6 @@ export default function AdminPage() {
   const router = useRouter();
   const [user, setUser] = useState<GoogleUser | null>(null);
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
-  const [masterKeyInput, setMasterKeyInput] = useState('');
   const [authError, setAuthError] = useState('');
 
   // Data
@@ -79,17 +77,13 @@ export default function AdminPage() {
   const [addingProduct, setAddingProduct] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState('');
 
-  const getActiveKey = () => getAdminMasterKey() || 'sinan123';
-
-  // Fetch admin data
-  const fetchAdminData = async (keyOverride?: string) => {
+  // Fetch admin data via authenticated session cookie
+  const fetchAdminData = async () => {
     setLoading(true);
     setAuthError('');
-    const key = keyOverride || getAdminMasterKey() || '';
     try {
       const res = await fetch('/api/admin/stores', {
-        credentials: 'include',
-        headers: key ? { 'x-admin-key': key } : undefined
+        credentials: 'include'
       });
 
       if (!res.ok) {
@@ -105,12 +99,9 @@ export default function AdminPage() {
       setStats(data.stats);
       setStores(data.stores);
       setIsAuthorized(true);
-      if (key) {
-        setAdminMasterKey(key);
-      }
     } catch (err: any) {
       console.error(err);
-      setAuthError('Connection error or unauthorized access.');
+      setAuthError('Unauthorized access or connection error.');
       setIsAuthorized(false);
     } finally {
       setLoading(false);
@@ -121,37 +112,29 @@ export default function AdminPage() {
     const currentUser = getStoredUser();
     setUser(currentUser);
 
-    const savedKey = getAdminMasterKey();
-    if (isPlatformAdmin(currentUser) || savedKey) {
-      fetchAdminData(savedKey || undefined);
+    if (isPlatformAdmin(currentUser)) {
+      fetchAdminData();
     } else {
       setIsAuthorized(false);
       setLoading(false);
     }
   }, []);
 
-  const handleKeySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!masterKeyInput.trim()) return;
-    fetchAdminData(masterKeyInput.trim());
-  };
-
   const handleLogout = () => {
-    clearAdminMasterKey();
+    clearStoredUser();
     setIsAuthorized(false);
+    router.push('/');
   };
 
   // Delete store handler
   const handleConfirmDelete = async () => {
     if (!deletingStore) return;
     setIsDeleting(true);
-    const key = getActiveKey();
 
     try {
       const res = await fetch(`/api/admin/stores?id=${encodeURIComponent(deletingStore.id)}`, {
         method: 'DELETE',
-        credentials: 'include',
-        headers: { 'x-admin-key': key }
+        credentials: 'include'
       });
 
       if (!res.ok) {
@@ -217,15 +200,13 @@ export default function AdminPage() {
     }
 
     setAddingProduct(true);
-    const key = getActiveKey();
 
     try {
       const res = await fetch('/api/admin/products', {
         method: 'POST',
         credentials: 'include',
         headers: {
-          'Content-Type': 'application/json',
-          'x-admin-key': key
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           storeId: selectedStoreId,
@@ -240,7 +221,6 @@ export default function AdminPage() {
       }
 
       const data = await res.json();
-      // Update local store state
       setStores((prev) =>
         prev.map((s) => (s.id === data.store.id ? data.store : s))
       );
@@ -251,7 +231,6 @@ export default function AdminPage() {
       setActionSuccessMessage(`Product "${productForm.name}" added successfully to store!`);
       setTimeout(() => setActionSuccessMessage(''), 4000);
       setIsAddProductOpen(false);
-      // Reset form
       setProductForm({
         name: '',
         description: '',
@@ -280,11 +259,13 @@ export default function AdminPage() {
   });
 
   // -------------------------------------------------------------
-  // UNAUTHORIZED / LOGIN SCREEN
+  // UNAUTHORIZED / GOOGLE AUTH ONLY SCREEN
   // -------------------------------------------------------------
   if (isAuthorized === false) {
+    const isDifferentUser = Boolean(user && user.email && !isPlatformAdmin(user));
+
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-100">
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-100 font-sans">
         <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
           <div className="text-center space-y-3">
             <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
@@ -292,22 +273,34 @@ export default function AdminPage() {
             </div>
             <h1 className="text-2xl font-black text-white tracking-tight">KadaLink SuperAdmin</h1>
             <p className="text-xs text-slate-400">
-              Restricted portal. Only platform administrators have permission to access store management.
+              Restricted portal. Only the platform owner (<strong>{PRIMARY_ADMIN_EMAIL}</strong>) is permitted to access administrative controls.
             </p>
           </div>
 
-          {authError && (
+          {isDifferentUser && (
+            <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-2xl space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>Unauthorized Account</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                You are currently signed in as <strong>{user?.email}</strong>. This account does not have administrator privileges.
+              </p>
+            </div>
+          )}
+
+          {authError && !isDifferentUser && (
             <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               <span>{authError}</span>
             </div>
           )}
 
-          {/* Google OAuth Direct Login */}
-          <div className="space-y-3">
+          {/* Google OAuth Authentication */}
+          <div className="space-y-3 pt-2">
             <a
               href="/api/auth/google"
-              className="w-full py-3.5 px-4 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold text-xs flex items-center justify-center gap-2.5 shadow-md transition-all cursor-pointer"
+              className="w-full py-4 px-4 bg-white hover:bg-slate-100 text-slate-900 rounded-2xl font-black text-xs flex items-center justify-center gap-2.5 shadow-lg shadow-white/5 transition-all cursor-pointer"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -327,53 +320,20 @@ export default function AdminPage() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>Authenticate with ckmuhammedsinan@gmail.com</span>
+              <span>Authenticate with {PRIMARY_ADMIN_EMAIL}</span>
             </a>
-            <p className="text-[11px] text-center text-slate-400">
-              Auto-grants full Administrator access upon Google OAuth sign-in.
+
+            <p className="text-[11px] text-center text-slate-500">
+              Sign in with your verified Google administrator account to manage all stores.
             </p>
           </div>
 
-          <div className="relative flex py-1 items-center">
-            <div className="flex-grow border-t border-slate-800" />
-            <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-              Or Unlock With Password
-            </span>
-            <div className="flex-grow border-t border-slate-800" />
-          </div>
-
-          <form onSubmit={handleKeySubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Admin Password</span>
-                </span>
-                <span className="text-[10px] text-emerald-400 font-mono font-bold">Password: sinan123</span>
-              </label>
-              <input
-                type="password"
-                value={masterKeyInput}
-                onChange={(e) => setMasterKeyInput(e.target.value)}
-                placeholder="Enter admin password (sinan123)"
-                className="w-full px-4 py-3 bg-slate-850 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-emerald-500 font-mono tracking-wider"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>{loading ? 'Verifying Password...' : 'Unlock Admin Portal'}</span>
-            </button>
-          </form>
-
-          <div className="pt-2 border-t border-slate-800 text-center">
-            <Link href="/" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
-              ← Return to KadaLink Home
+          <div className="pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-500">
+            <Link href="/" className="hover:text-slate-300 transition-colors">
+              ← KadaLink Home
+            </Link>
+            <Link href="/dashboard" className="hover:text-slate-300 transition-colors">
+              Seller Dashboard →
             </Link>
           </div>
         </div>
@@ -386,10 +346,10 @@ export default function AdminPage() {
   // -------------------------------------------------------------
   if (loading && !stats) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
         <div className="text-center space-y-3">
           <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs font-mono text-slate-400">Loading KadaLink Master Admin Console...</p>
+          <p className="text-xs font-mono text-slate-400">Verifying administrator credentials...</p>
         </div>
       </div>
     );
@@ -413,7 +373,9 @@ export default function AdminPage() {
                 SuperAdmin
               </span>
             </div>
-            <p className="text-[10px] text-slate-400">Platform Management & Multi-Store Control</p>
+            <p className="text-[10px] text-slate-400">
+              Authenticated as: <span className="text-emerald-400 font-mono">{user?.email || PRIMARY_ADMIN_EMAIL}</span>
+            </p>
           </div>
         </div>
 
@@ -438,8 +400,8 @@ export default function AdminPage() {
 
           <button
             onClick={handleLogout}
-            title="Lock Admin Session"
-            className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl transition-colors"
+            title="Sign Out"
+            className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -516,7 +478,7 @@ export default function AdminPage() {
               <button
                 onClick={() => fetchAdminData()}
                 title="Refresh stores"
-                className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl hover:bg-slate-800 text-slate-300 transition-colors"
+                className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -640,9 +602,7 @@ export default function AdminPage() {
         </section>
       </main>
 
-      {/* ------------------------------------------------------------- */}
       {/* DELETE STORE SAFETY MODAL */}
-      {/* ------------------------------------------------------------- */}
       {deletingStore && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
           <div className="max-w-md w-full bg-slate-900 border border-rose-500/30 rounded-3xl p-6 shadow-2xl space-y-5">
@@ -667,7 +627,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={() => setDeletingStore(null)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors"
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -684,9 +644,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
       {/* DIRECT PRODUCT UPLOAD MODAL */}
-      {/* ------------------------------------------------------------- */}
       {isAddProductOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
           <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 my-8">
@@ -702,14 +660,13 @@ export default function AdminPage() {
               </div>
               <button
                 onClick={() => setIsAddProductOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddProductSubmit} className="space-y-4">
-              {/* Select target store */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5">Target Store</label>
                 <select
@@ -727,7 +684,6 @@ export default function AdminPage() {
                 </select>
               </div>
 
-              {/* Product name & price */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">Product Title</label>
@@ -755,7 +711,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Unit & Category */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">Unit / Packaging</label>
@@ -780,7 +735,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">Description</label>
                 <textarea
@@ -792,13 +746,11 @@ export default function AdminPage() {
                 />
               </div>
 
-              {/* Image Upload & Presets */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-300">
                   Product Image (File Upload or Presets)
                 </label>
 
-                {/* Upload button */}
                 <div className="flex items-center gap-3">
                   <label className="flex-1 border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-3 text-center cursor-pointer transition-colors bg-slate-850">
                     <input
@@ -823,7 +775,6 @@ export default function AdminPage() {
                   )}
                 </div>
 
-                {/* Quick Presets */}
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Or pick a catalog preset:</span>
                   <div className="grid grid-cols-4 gap-2 pt-1.5">
@@ -832,7 +783,7 @@ export default function AdminPage() {
                         key={img.name}
                         type="button"
                         onClick={() => setProductForm({ ...productForm, imageUrl: img.url })}
-                        className={`p-1.5 rounded-xl border text-center transition-all ${
+                        className={`p-1.5 rounded-xl border text-center transition-all cursor-pointer ${
                           productForm.imageUrl === img.url
                             ? 'border-emerald-500 bg-emerald-500/10'
                             : 'border-slate-800 bg-slate-800/50 hover:border-slate-700'
@@ -846,7 +797,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* In stock toggle */}
               <div className="flex items-center gap-2 pt-1">
                 <input
                   type="checkbox"
@@ -860,12 +810,11 @@ export default function AdminPage() {
                 </label>
               </div>
 
-              {/* Actions */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsAddProductOpen(false)}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors"
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>

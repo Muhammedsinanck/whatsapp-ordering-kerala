@@ -1,23 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllStores, saveStore } from '@/lib/db';
-import { KNOWN_ADMIN_EMAILS } from '@/lib/auth';
+import { KNOWN_ADMIN_EMAILS, PRIMARY_ADMIN_EMAIL } from '@/lib/auth';
 import { Product } from '@/types';
 
-const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY || 'sinan123';
-
 function checkAdminAuth(request: NextRequest): boolean {
-  const headerKey = request.headers.get('x-admin-key');
-  if (headerKey && headerKey.trim() === ADMIN_SECRET_KEY) return true;
-
   const sessionCookie = request.cookies.get('kadalink_user_session')?.value;
   if (sessionCookie) {
     try {
       const user = JSON.parse(decodeURIComponent(sessionCookie));
       const email = (user.email || '').toLowerCase().trim();
-      if (email === 'ckmuhammedsinan@gmail.com' || user.role === 'admin') return true;
+      if (email === PRIMARY_ADMIN_EMAIL || user.role === 'admin') return true;
       const envAdmin = (process.env.ADMIN_EMAIL || process.env.NEXT_PUBLIC_ADMIN_EMAIL || '').toLowerCase().trim();
       if (envAdmin && email === envAdmin) return true;
-      if (KNOWN_ADMIN_EMAILS.some((adm) => email.includes(adm) || adm.includes(email))) return true;
+      if (KNOWN_ADMIN_EMAILS.some((adm) => email === adm || email.includes(adm))) return true;
     } catch {}
   }
 
@@ -26,7 +21,10 @@ function checkAdminAuth(request: NextRequest): boolean {
 
 export async function POST(request: NextRequest) {
   if (!checkAdminAuth(request)) {
-    return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    return NextResponse.json(
+      { error: 'Forbidden: Admin access strictly restricted to ckmuhammedsinan@gmail.com' },
+      { status: 403 }
+    );
   }
 
   try {

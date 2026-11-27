@@ -1,26 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllStores, deleteStore, getAllUsers } from '@/lib/db';
-import { KNOWN_ADMIN_EMAILS } from '@/lib/auth';
-
-const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY || 'sinan123';
+import { KNOWN_ADMIN_EMAILS, PRIMARY_ADMIN_EMAIL } from '@/lib/auth';
 
 function checkAdminAuth(request: NextRequest): boolean {
-  // 1. Check custom admin header
-  const headerKey = request.headers.get('x-admin-key');
-  if (headerKey && headerKey.trim() === ADMIN_SECRET_KEY) {
-    return true;
-  }
-
-  // 2. Check session cookie
   const sessionCookie = request.cookies.get('kadalink_user_session')?.value;
   if (sessionCookie) {
     try {
       const user = JSON.parse(decodeURIComponent(sessionCookie));
       const email = (user.email || '').toLowerCase().trim();
-      if (email === 'ckmuhammedsinan@gmail.com' || user.role === 'admin') return true;
+      if (email === PRIMARY_ADMIN_EMAIL || user.role === 'admin') return true;
       const envAdmin = (process.env.ADMIN_EMAIL || process.env.NEXT_PUBLIC_ADMIN_EMAIL || '').toLowerCase().trim();
       if (envAdmin && email === envAdmin) return true;
-      if (KNOWN_ADMIN_EMAILS.some((adm) => email.includes(adm) || adm.includes(email))) {
+      if (KNOWN_ADMIN_EMAILS.some((adm) => email === adm || email.includes(adm))) {
         return true;
       }
     } catch {
@@ -34,7 +25,7 @@ function checkAdminAuth(request: NextRequest): boolean {
 export async function GET(request: NextRequest) {
   if (!checkAdminAuth(request)) {
     return NextResponse.json(
-      { error: 'Forbidden: Admin access required' },
+      { error: 'Forbidden: Admin access strictly restricted to ckmuhammedsinan@gmail.com' },
       { status: 403 }
     );
   }
@@ -61,7 +52,7 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   if (!checkAdminAuth(request)) {
     return NextResponse.json(
-      { error: 'Forbidden: Admin access required' },
+      { error: 'Forbidden: Admin access strictly restricted to ckmuhammedsinan@gmail.com' },
       { status: 403 }
     );
   }
