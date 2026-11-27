@@ -66,6 +66,7 @@ export default function CartDrawer({
   const [validationError, setValidationError] = useState('');
 
   const template = TEMPLATES[store.templateId] || TEMPLATES['kerala-heritage'];
+  const currency = store.currency ? `${store.currency} ` : '₹';
 
   // Calculations
   const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -81,7 +82,7 @@ export default function CartDrawer({
     const itemsText = cart
       .map(
         (item, idx) =>
-          `${idx + 1}. *${item.product.name}* (${item.product.unit || 'unit'}) x ${item.quantity} = ₹${
+          `${idx + 1}. *${item.product.name}* (${item.product.unit || 'unit'}) x ${item.quantity} = ${currency}${
             item.product.price * item.quantity
           }`
       )
@@ -89,32 +90,32 @@ export default function CartDrawer({
 
     const paymentText =
       paymentMethod === 'upi'
-        ? `UPI / GPay / PhonePe`
+        ? (store.currency === 'AED' ? 'Card / Bank Transfer' : 'UPI / GPay / PhonePe')
         : 'Cash on Delivery (COD)';
 
     const deliveryText = isFreeDelivery
       ? 'FREE Delivery (Offer 🎉)'
-      : `₹${deliveryFee}`;
+      : `${currency}${deliveryFee}`;
 
     return [
       `🛍️ *NEW ORDER - ${store.name.toUpperCase()}*`,
       `━━━━━━━━━━━━━━━━━━━━━━`,
       `👤 *Customer:* ${customerName.trim()}`,
-      `📞 *Phone:* +91 ${customerPhone.trim()}`,
+      `📞 *Phone:* ${customerPhone.trim()}`,
       `📍 *Delivery Address:*`,
       `${address.trim()}`,
-      `${district} - ${pincode.trim() || 'Kerala'}`,
+      `${district} - ${pincode.trim() || ''}`,
       ``,
       `📦 *Order Items:*`,
       itemsText,
       `━━━━━━━━━━━━━━━━━━━━━━`,
-      `💵 *Items Subtotal:* ₹${subtotal}`,
+      `💵 *Items Subtotal:* ${currency}${subtotal}`,
       `🚚 *Delivery Fee:* ${deliveryText}`,
-      `💰 *Grand Total:* *₹${grandTotal}*`,
+      `💰 *Grand Total:* *${currency}${grandTotal}*`,
       `💳 *Payment Method:* ${paymentText}`,
       notes.trim() ? `\n📝 *Notes:* ${notes.trim()}` : '',
       `━━━━━━━━━━━━━━━━━━━━━━`,
-      `⚡ *Order placed via KadaLink Kerala*`
+      `⚡ *Order placed via KadaLink*`
     ]
       .filter(Boolean)
       .join('\n');
@@ -204,7 +205,7 @@ export default function CartDrawer({
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-left w-full space-y-1 text-slate-700">
                 <div className="font-bold text-emerald-800 flex justify-between">
                   <span>Order Total:</span>
-                  <span>₹{grandTotal}</span>
+                  <span>{currency}{grandTotal}</span>
                 </div>
                 <div>• Items: {cart.length} item(s)</div>
                 <div>• Payment: {paymentMethod === 'upi' ? 'UPI / GPay' : 'Cash on Delivery'}</div>
@@ -257,10 +258,10 @@ export default function CartDrawer({
                   <Truck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                   <div>
                     {isFreeDelivery ? (
-                      <span className="font-bold">🎉 You qualify for FREE Delivery across Kerala!</span>
+                      <span className="font-bold">🎉 You qualify for FREE Delivery!</span>
                     ) : (
                       <span>
-                        Add <strong>₹{amountNeededForFreeDelivery}</strong> more for <strong>FREE Delivery</strong>
+                        Add <strong>{currency}{amountNeededForFreeDelivery}</strong> more for <strong>FREE Delivery</strong>
                       </span>
                     )}
                   </div>
@@ -293,10 +294,10 @@ export default function CartDrawer({
                         <div className="flex-1 min-w-0">
                           <h4 className="text-xs font-bold text-slate-900 truncate">{item.product.name}</h4>
                           <p className="text-[11px] text-slate-500">
-                            ₹{item.product.price} / {item.product.unit || 'unit'}
+                            {currency}{item.product.price} / {item.product.unit || 'unit'}
                           </p>
                           <div className="font-bold text-xs text-emerald-700 mt-0.5">
-                            ₹{item.product.price * item.quantity}
+                            {currency}{item.product.price * item.quantity}
                           </div>
                         </div>
 
@@ -475,17 +476,17 @@ export default function CartDrawer({
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-500">
                     <span>Items Subtotal:</span>
-                    <span>₹{subtotal}</span>
+                    <span>{currency}{subtotal}</span>
                   </div>
                   <div className="flex justify-between text-slate-500">
                     <span>Delivery Fee:</span>
                     <span className={isFreeDelivery ? 'text-emerald-600 font-bold' : ''}>
-                      {isFreeDelivery ? 'FREE 🎉' : `₹${deliveryFee}`}
+                      {isFreeDelivery ? 'FREE 🎉' : `${currency}${deliveryFee}`}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm font-black text-slate-900 pt-1 border-t border-slate-100">
                     <span>Total Amount:</span>
-                    <span className="text-emerald-700 text-base">₹{grandTotal}</span>
+                    <span className="text-emerald-700 text-base">{currency}{grandTotal}</span>
                   </div>
                 </div>
 
@@ -496,7 +497,7 @@ export default function CartDrawer({
                   className="w-full py-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-2xl font-black text-xs shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
                 >
                   <MessageCircle className="w-5 h-5 fill-white" />
-                  <span>Place Order on WhatsApp (₹{grandTotal})</span>
+                  <span>Place Order on WhatsApp ({currency}{grandTotal})</span>
                 </button>
                 <p className="text-[10px] text-center text-slate-400">
                   Sends complete order details directly to {store.name}'s WhatsApp.

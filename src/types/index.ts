@@ -32,6 +32,7 @@ export interface Store {
   templateId: TemplateId;
   logoUrl?: string;
   bannerUrl?: string;
+  currency?: string; // e.g. "AED" or "₹"
   deliverySettings: StoreDeliverySettings;
   products: Product[];
   createdAt: string;

@@ -127,14 +127,15 @@ export default function StorefrontPage() {
     return matchesSearch && matchesCategory;
   });
 
+  const currency = store.currency ? `${store.currency} ` : '₹';
+
   return (
     <div className={`min-h-screen flex flex-col ${template.bgClass}`}>
-      {/* Top Banner: Kerala Delivery */}
+      {/* Top Banner */}
       <div className="bg-emerald-700 text-emerald-50 px-4 py-2 text-xs text-center font-medium flex items-center justify-center gap-2">
         <Truck className="w-3.5 h-3.5" />
         <span>
-          Flat ₹{store.deliverySettings.flatFee} delivery across Kerala | Free delivery above ₹
-          {store.deliverySettings.freeAboveThreshold}
+          {store.deliverySettings.deliveryNotes || `Flat ${currency}${store.deliverySettings.flatFee} delivery | Free delivery above ${currency}${store.deliverySettings.freeAboveThreshold}`}
         </span>
       </div>
 
@@ -158,7 +159,7 @@ export default function StorefrontPage() {
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{store.name}</h1>
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Verified Kerala Seller
+                  <ShieldCheck className="w-3.5 h-3.5" /> {store.currency === 'AED' ? 'Verified Official Brand' : 'Verified Kerala Seller'}
                 </span>
               </div>
 
@@ -171,7 +172,7 @@ export default function StorefrontPage() {
                 <span>View Cart ({totalCartCount})</span>
                 {totalCartCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black">
-                    ₹{cartSubtotal}
+                    {currency}{cartSubtotal}
                   </span>
                 )}
               </button>
@@ -288,7 +289,7 @@ export default function StorefrontPage() {
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                       <div>
                         <span className="text-xs text-slate-400">Price</span>
-                        <div className="text-lg font-extrabold text-slate-900">₹{product.price}</div>
+                        <div className="text-lg font-extrabold text-slate-900">{currency}{product.price}</div>
                       </div>
 
                       {product.inStock ? (
@@ -357,7 +358,7 @@ export default function StorefrontPage() {
                 <div className="text-xs text-slate-300 font-medium">
                   {totalCartCount} {totalCartCount === 1 ? 'item' : 'items'} in cart
                 </div>
-                <div className="text-sm font-extrabold text-white">₹{cartSubtotal}</div>
+                <div className="text-sm font-extrabold text-white">{currency}{cartSubtotal}</div>
               </div>
             </div>
 
