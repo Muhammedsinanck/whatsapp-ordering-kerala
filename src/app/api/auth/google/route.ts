@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanEmail = email.toLowerCase().trim();
+    const isOwnerAdmin = cleanEmail === 'ckmuhammedsinan@gmail.com' || cleanEmail === 'sinan@gmail.com';
     let existing = await getUserByEmail(cleanEmail);
 
     if (!existing) {
@@ -46,10 +47,14 @@ export async function POST(request: NextRequest) {
         email: cleanEmail,
         name: name || cleanEmail.split('@')[0],
         avatar: avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name || cleanEmail)}`,
+        role: isOwnerAdmin ? 'admin' : 'seller',
         createdAt: new Date().toISOString()
       };
       await saveUser(newUser);
       existing = newUser;
+    } else if (isOwnerAdmin && existing.role !== 'admin') {
+      existing.role = 'admin';
+      await saveUser(existing);
     }
 
     const { password: _, ...sanitizedUser } = existing;

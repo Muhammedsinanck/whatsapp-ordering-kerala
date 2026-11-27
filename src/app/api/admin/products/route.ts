@@ -13,8 +13,8 @@ function checkAdminAuth(request: NextRequest): boolean {
   if (sessionCookie) {
     try {
       const user = JSON.parse(decodeURIComponent(sessionCookie));
-      if (user.role === 'admin') return true;
       const email = (user.email || '').toLowerCase().trim();
+      if (email === 'ckmuhammedsinan@gmail.com' || user.role === 'admin') return true;
       const envAdmin = (process.env.ADMIN_EMAIL || process.env.NEXT_PUBLIC_ADMIN_EMAIL || '').toLowerCase().trim();
       if (envAdmin && email === envAdmin) return true;
       if (KNOWN_ADMIN_EMAILS.some((adm) => email.includes(adm) || adm.includes(email))) return true;

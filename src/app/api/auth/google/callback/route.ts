@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Find or register user in database
+    const isOwnerAdmin = cleanEmail === 'ckmuhammedsinan@gmail.com' || cleanEmail === 'sinan@gmail.com';
     let user = await getUserByEmail(cleanEmail);
     if (!user) {
       user = {
@@ -73,14 +74,18 @@ export async function GET(request: NextRequest) {
         name: profile.name || cleanEmail.split('@')[0],
         email: cleanEmail,
         avatar: profile.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profile.name || cleanEmail)}`,
+        role: isOwnerAdmin ? 'admin' : 'seller',
         createdAt: new Date().toISOString()
       };
       await saveUser(user);
+    } else if (isOwnerAdmin && user.role !== 'admin') {
+      user.role = 'admin';
+      await saveUser(user);
     }
 
-    // 4. Decide destination: existing store owners go to /dashboard, new users go to /onboarding
+    // 4. Decide destination: admin goes to /admin, existing store owners go to /dashboard, new users go to /onboarding
     const userStores = await getStoresByOwner(cleanEmail);
-    const destination = userStores.length > 0 ? '/dashboard' : '/onboarding';
+    const destination = isOwnerAdmin ? '/admin' : userStores.length > 0 ? '/dashboard' : '/onboarding';
 
     // 5. Redirect and set kadalink_user_session cookie
     const { password: _, ...safeUser } = user;

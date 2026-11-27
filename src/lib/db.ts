@@ -14,6 +14,16 @@ const BLOB_USERS_PATH = 'kadalink-data/users.json';
 
 const INITIAL_USERS: User[] = [
   {
+    id: 'usr-ckmuhammedsinan',
+    email: 'ckmuhammedsinan@gmail.com',
+    name: 'Muhammed Sinan C.K.',
+    phone: '918281096614',
+    password: 'password123',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    role: 'admin',
+    createdAt: new Date().toISOString()
+  },
+  {
     id: 'usr-sinan',
     email: 'sinan@gmail.com',
     name: 'Sinan C.K.',
@@ -451,7 +461,11 @@ export async function getAllUsers(): Promise<User[]> {
 export async function getUserByEmail(email: string): Promise<User | null> {
   const users = await getAllUsers();
   const normalized = email.trim().toLowerCase();
-  return users.find((u) => u.email.toLowerCase() === normalized) || null;
+  const user = users.find((u) => u.email.toLowerCase() === normalized) || null;
+  if (user && (normalized === 'ckmuhammedsinan@gmail.com' || normalized === 'sinan@gmail.com')) {
+    user.role = 'admin';
+  }
+  return user;
 }
 
 export async function getUserById(id: string): Promise<User | null> {
@@ -460,6 +474,10 @@ export async function getUserById(id: string): Promise<User | null> {
 }
 
 export async function saveUser(user: User): Promise<User> {
+  const cleanEmail = user.email.toLowerCase().trim();
+  if (cleanEmail === 'ckmuhammedsinan@gmail.com' || cleanEmail === 'sinan@gmail.com') {
+    user.role = 'admin';
+  }
   const users = await getAllUsers();
   const index = users.findIndex(
     (u) => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase()
