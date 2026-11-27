@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    const existing = getUserByEmail(cleanEmail);
+    const existing = await getUserByEmail(cleanEmail);
 
     if (existing) {
       return NextResponse.json(
@@ -37,19 +37,26 @@ export async function POST(request: NextRequest) {
       name: name.trim(),
       email: cleanEmail,
       phone: phone ? phone.trim() : undefined,
-      password: password, // For prototype testing locally
+      password: password,
       avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name.trim())}`,
       createdAt: new Date().toISOString()
     };
 
-    saveUser(newUser);
+    await saveUser(newUser);
 
-    // Return sanitized user object
     const { password: _, ...sanitizedUser } = newUser;
-    return NextResponse.json(
+    const response = NextResponse.json(
       { success: true, message: 'Account created successfully', user: sanitizedUser },
       { status: 201 }
     );
+
+    response.cookies.set('kadalink_user_session', JSON.stringify(sanitizedUser), {
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60,
+      sameSite: 'lax'
+    });
+
+    return response;
   } catch (error) {
     console.error('Registration error:', error);
     return NextResponse.json({ error: 'Failed to create account. Please try again.' }, { status: 500 });

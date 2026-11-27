@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const store = getStoreBySlug(slug);
+  const store = await getStoreBySlug(slug);
 
   if (!store) {
     return NextResponse.json({ error: 'Store not found' }, { status: 404 });
@@ -22,14 +22,30 @@ export async function PUT(
 ) {
   try {
     const { slug } = await params;
-    const body = await request.json() as Store;
-    const existing = getStoreBySlug(slug);
+    const body = (await request.json()) as Store;
+    const existing = await getStoreBySlug(slug);
 
     if (!existing) {
       return NextResponse.json({ error: 'Store not found' }, { status: 404 });
     }
 
-    const updated = saveStore({
+    // If slug is changing, verify the new slug is not taken
+    if (body.slug && body.slug.toLowerCase().trim() !== existing.slug.toLowerCase()) {
+      const newSlugClean = body.slug
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      const slugCheck = await getStoreBySlug(newSlugClean);
+      if (slugCheck && slugCheck.id !== existing.id) {
+        return NextResponse.json(
+          { error: `The store handle "/store/${newSlugClean}" is already taken.` },
+          { status: 409 }
+        );
+      }
+    }
+
+    const updated = await saveStore({
       ...existing,
       ...body,
       id: existing.id,
@@ -48,12 +64,12 @@ export async function DELETE(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const existing = getStoreBySlug(slug);
+  const existing = await getStoreBySlug(slug);
 
   if (!existing) {
     return NextResponse.json({ error: 'Store not found' }, { status: 404 });
   }
 
-  const success = deleteStore(existing.id);
+  const success = await deleteStore(existing.id);
   return NextResponse.json({ success });
 }

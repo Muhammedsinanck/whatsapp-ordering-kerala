@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getStoredUser, clearStoredUser } from '@/lib/auth';
+import { getStoredUser, clearStoredUser, isPlatformAdmin } from '@/lib/auth';
 import { GoogleUser } from '@/types';
 import GoogleSignInModal from './GoogleSignInModal';
-import { Store, LogOut, ArrowRight, Sparkles, MessageCircle } from 'lucide-react';
+import { Store, LogOut, ArrowRight, MessageCircle, Shield } from 'lucide-react';
 
 export default function Navbar() {
   const [user, setUser] = useState<GoogleUser | null>(null);
@@ -26,9 +26,11 @@ export default function Navbar() {
     clearStoredUser();
   };
 
+  const isAdmin = isPlatformAdmin(user);
+
   return (
     <>
-      <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+      <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group">
@@ -37,7 +39,9 @@ export default function Navbar() {
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-slate-900 text-lg tracking-tight">Kada<span className="text-emerald-600">Link</span></span>
+                <span className="font-extrabold text-slate-900 text-lg tracking-tight">
+                  Kada<span className="text-emerald-600">Link</span>
+                </span>
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">
                   Kerala
                 </span>
@@ -62,20 +66,32 @@ export default function Navbar() {
           {/* Actions */}
           <div className="flex items-center gap-3">
             {user ? (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 text-xs font-bold rounded-xl transition-all"
+                  >
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>Admin</span>
+                  </Link>
+                )}
+
                 <Link
                   href="/onboarding"
                   className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl border border-emerald-200 transition-all"
                 >
                   <span>+ New Store</span>
                 </Link>
+
                 <Link
                   href="/dashboard"
-                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-sm transition-all"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-xs transition-all"
                 >
                   <Store className="w-3.5 h-3.5" />
                   <span>Dashboard</span>
                 </Link>
+
                 <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
                   <img
                     src={user.avatar}
@@ -101,7 +117,7 @@ export default function Navbar() {
                 </Link>
                 <Link
                   href="/signup"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm shadow-emerald-600/20 transition-all"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs shadow-emerald-600/20 transition-all"
                 >
                   <span>Create Your Store</span>
                   <ArrowRight className="w-3.5 h-3.5" />

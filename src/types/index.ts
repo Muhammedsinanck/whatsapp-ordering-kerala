@@ -24,8 +24,8 @@ export interface Store {
   tagline: string;
   description: string;
   whatsappNumber: string; // e.g. "919876543210"
-  upiId: string; // e.g. "merchant@okhdfcbank"
-  upiName?: string; // Merchant display name for UPI
+  upiId?: string; // Optional UPI ID (for merchant records)
+  upiName?: string; // Merchant display name
   ownerEmail: string;
   ownerName: string;
   ownerAvatar?: string;
@@ -60,6 +60,7 @@ export interface User {
   phone?: string;
   password?: string;
   avatar: string;
+  role?: 'admin' | 'seller';
   createdAt?: string;
 }
 

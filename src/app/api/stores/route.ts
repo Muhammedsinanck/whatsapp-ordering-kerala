@@ -2,55 +2,92 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAllStores, getStoresByOwner, saveStore, getStoreBySlug } from '@/lib/db';
 import { Store } from '@/types';
 
+const RESERVED_SLUGS = new Set([
+  'admin',
+  'api',
+  'login',
+  'signup',
+  'dashboard',
+  'onboarding',
+  'setup',
+  'store',
+  'stores',
+  'static',
+  'assets'
+]);
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const ownerEmail = searchParams.get('ownerEmail');
 
   if (ownerEmail) {
-    const userStores = getStoresByOwner(ownerEmail);
+    const userStores = await getStoresByOwner(ownerEmail);
     return NextResponse.json(userStores);
   }
 
-  const stores = getAllStores();
+  const stores = await getAllStores();
   return NextResponse.json(stores);
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as Store;
+    const body = (await request.json()) as Store;
 
     if (!body.name || !body.slug || !body.whatsappNumber) {
       return NextResponse.json(
-        { error: 'Store name, slug, and WhatsApp number are required' },
+        { error: 'Store name, slug handle, and WhatsApp number are required' },
         { status: 400 }
       );
     }
 
-    // Clean slug
-    const cleanSlug = body.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-    
-    // Check if slug is taken by someone else
-    const existing = getStoreBySlug(cleanSlug);
+    // Clean and normalize slug
+    const cleanSlug = body.slug
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    if (cleanSlug.length < 3) {
+      return NextResponse.json(
+        { error: 'Store link must be at least 3 characters long' },
+        { status: 400 }
+      );
+    }
+
+    if (RESERVED_SLUGS.has(cleanSlug)) {
+      return NextResponse.json(
+        { error: `The link handle "/store/${cleanSlug}" is reserved by the platform. Please pick a different handle.` },
+        { status: 400 }
+      );
+    }
+
+    // Check if slug is permanently taken by someone else
+    const existing = await getStoreBySlug(cleanSlug);
     if (existing && existing.id !== body.id) {
       return NextResponse.json(
-        { error: 'This store link is already taken! Please choose another link slug.' },
+        {
+          error: `The store link "kadalink.in/store/${cleanSlug}" is already permanently registered by another seller. Please pick another unique handle.`
+        },
         { status: 409 }
       );
     }
 
+    const cleanOwnerEmail = (body.ownerEmail || 'anonymous@kadalink.in').toLowerCase().trim();
+
     const storeToSave: Store = {
       ...body,
       slug: cleanSlug,
+      ownerEmail: cleanOwnerEmail,
       id: body.id || `store-${cleanSlug}-${Date.now().toString().slice(-4)}`,
       createdAt: body.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       products: body.products || []
     };
 
-    const saved = saveStore(storeToSave);
+    const saved = await saveStore(storeToSave);
     return NextResponse.json(saved, { status: 201 });
   } catch (error) {
     console.error('Failed to save store:', error);
-    return NextResponse.json({ error: 'Failed to save store' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to save store. Please try again.' }, { status: 500 });
   }
 }

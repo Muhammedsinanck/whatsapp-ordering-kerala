@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    const user = getUserByEmail(cleanEmail);
+    const user = await getUserByEmail(cleanEmail);
 
     if (!user) {
       return NextResponse.json(
@@ -24,13 +24,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Prototype check: if password matches or user has no password set (demo profile)
     if (user.password && user.password !== password) {
       return NextResponse.json({ error: 'Incorrect password. Please try again.' }, { status: 401 });
     }
 
     const { password: _, ...sanitizedUser } = user;
-    return NextResponse.json({ success: true, user: sanitizedUser });
+    const response = NextResponse.json({ success: true, user: sanitizedUser });
+
+    response.cookies.set('kadalink_user_session', JSON.stringify(sanitizedUser), {
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60,
+      sameSite: 'lax'
+    });
+
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json({ error: 'Authentication failed. Please try again.' }, { status: 500 });

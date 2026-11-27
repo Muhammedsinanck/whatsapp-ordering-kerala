@@ -65,8 +65,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${baseUrl}/login?error=no_email_provided`);
     }
 
-    // 3. Find or register user in local database
-    let user = getUserByEmail(cleanEmail);
+    // 3. Find or register user in database
+    let user = await getUserByEmail(cleanEmail);
     if (!user) {
       user = {
         id: `usr-google-${profile.sub || Date.now()}`,
@@ -75,11 +75,11 @@ export async function GET(request: NextRequest) {
         avatar: profile.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profile.name || cleanEmail)}`,
         createdAt: new Date().toISOString()
       };
-      saveUser(user);
+      await saveUser(user);
     }
 
     // 4. Decide destination: existing store owners go to /dashboard, new users go to /onboarding
-    const userStores = getStoresByOwner(cleanEmail);
+    const userStores = await getStoresByOwner(cleanEmail);
     const destination = userStores.length > 0 ? '/dashboard' : '/onboarding';
 
     // 5. Redirect and set kadalink_user_session cookie

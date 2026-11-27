@@ -12,12 +12,10 @@ export async function GET(request: NextRequest) {
   const baseUrl = process.env.NEXTAUTH_URL || process.env.APP_URL || `${proto}://${host}`;
   const redirectUri = `${baseUrl}/api/auth/google/callback`;
 
-  // If credentials are not yet configured in environment variables, redirect with notice
   if (!clientId || !clientSecret) {
     return NextResponse.redirect(`${baseUrl}/login?oauth_missing=true`);
   }
 
-  // Construct official Google OAuth 2.0 consent URL
   const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   googleAuthUrl.searchParams.set('client_id', clientId);
   googleAuthUrl.searchParams.set('redirect_uri', redirectUri);
@@ -40,7 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    let existing = getUserByEmail(cleanEmail);
+    let existing = await getUserByEmail(cleanEmail);
 
     if (!existing) {
       const newUser: User = {
@@ -50,14 +48,13 @@ export async function POST(request: NextRequest) {
         avatar: avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name || cleanEmail)}`,
         createdAt: new Date().toISOString()
       };
-      saveUser(newUser);
+      await saveUser(newUser);
       existing = newUser;
     }
 
     const { password: _, ...sanitizedUser } = existing;
     const response = NextResponse.json({ success: true, user: sanitizedUser });
 
-    // Also set cookie so session is recognized everywhere
     response.cookies.set('kadalink_user_session', JSON.stringify(sanitizedUser), {
       path: '/',
       maxAge: 30 * 24 * 60 * 60,

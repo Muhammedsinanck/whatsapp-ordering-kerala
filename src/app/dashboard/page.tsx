@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getStoredUser, clearStoredUser } from '@/lib/auth';
+import { getStoredUser, clearStoredUser, isPlatformAdmin } from '@/lib/auth';
 import { GoogleUser, Store, Product, TemplateId } from '@/types';
 import { TEMPLATES } from '@/lib/templates';
 import GoogleSignInModal from '@/components/GoogleSignInModal';
@@ -19,21 +19,19 @@ import {
   Edit,
   Check,
   Save,
-  QrCode,
   LogOut,
   Sparkles,
   Phone,
-  CreditCard,
   Truck,
-  ChevronDown,
   CheckCircle2,
   Copy,
-  Layers,
-  ArrowRight
+  Upload,
+  AlertCircle,
+  Shield,
+  X
 } from 'lucide-react';
 import Link from 'next/link';
 
-// Curated sample Kerala product photo presets
 const PRODUCT_IMAGE_PRESETS = [
   {
     name: 'Mango Pickle',
@@ -83,14 +81,15 @@ export default function DashboardPage() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isCreateStoreModalOpen, setIsCreateStoreModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'template' | 'products' | 'settings'>('template');
-  
+  const [activeTab, setActiveTab] = useState<'products' | 'settings' | 'template'>('products');
+
   const [userStores, setUserStores] = useState<Store[]>([]);
   const [currentStore, setCurrentStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // New Store Form State
   const [newStoreForm, setNewStoreForm] = useState({
@@ -98,15 +97,16 @@ export default function DashboardPage() {
     slug: '',
     tagline: '',
     whatsappNumber: '918281096614',
-    upiId: '',
     templateId: 'kerala-heritage' as TemplateId,
     flatFee: 50,
     freeAboveThreshold: 500
   });
+  const [newStoreSlugStatus, setNewStoreSlugStatus] = useState<'checking' | 'available' | 'taken' | 'idle'>('idle');
 
   // Product modal state
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [productForm, setProductForm] = useState({
     name: '',
     description: '',
@@ -117,6 +117,9 @@ export default function DashboardPage() {
     inStock: true
   });
 
+  // Settings Slug check
+  const [settingsSlugStatus, setSettingsSlugStatus] = useState<'checking' | 'available' | 'taken' | 'idle'>('idle');
+
   // Fetch stores for logged in user
   const loadUserStores = async (email: string) => {
     try {
@@ -124,7 +127,6 @@ export default function DashboardPage() {
       const stores: Store[] = await res.json();
       setUserStores(stores);
       if (stores.length > 0) {
-        // Keep current selected store if exists, otherwise first store
         setCurrentStore((prev) => {
           if (prev) {
             const found = stores.find((s) => s.id === prev.id);
@@ -161,6 +163,7 @@ export default function DashboardPage() {
     if (!target) return;
 
     setSaving(true);
+    setSaveError('');
     try {
       const res = await fetch('/api/stores', {
         method: 'POST',
@@ -169,6 +172,7 @@ export default function DashboardPage() {
       });
       if (!res.ok) {
         const errData = await res.json();
+        setSaveError(errData.error || 'Failed to save store');
         alert(errData.error || 'Failed to save store');
         return;
       }
@@ -182,6 +186,21 @@ export default function DashboardPage() {
       alert('Failed to save store changes.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Check slug uniqueness
+  const checkSettingsSlug = async (slugVal: string) => {
+    if (!currentStore || !slugVal || slugVal.length < 3) return;
+    setSettingsSlugStatus('checking');
+    try {
+      const res = await fetch(
+        `/api/stores/check-slug?slug=${encodeURIComponent(slugVal)}&currentStoreId=${encodeURIComponent(currentStore.id)}`
+      );
+      const data = await res.json();
+      setSettingsSlugStatus(data.available ? 'available' : 'taken');
+    } catch {
+      setSettingsSlugStatus('idle');
     }
   };
 
@@ -202,11 +221,9 @@ export default function DashboardPage() {
       slug: cleanSlug,
       name: newStoreForm.name,
       tagline: newStoreForm.tagline || 'Homemade & handcrafted with love from Kerala',
-      description: 'Order directly via WhatsApp with instant UPI payment. Fast dispatch across Kerala.',
-      whatsappNumber: newStoreForm.whatsappNumber,
-      upiId: newStoreForm.upiId || `${cleanSlug}@okaxis`,
-      upiName: newStoreForm.name,
-      ownerEmail: user.email,
+      description: 'Order directly via WhatsApp. Fast shipping across Kerala.',
+      whatsappNumber: newStoreForm.whatsappNumber.replace(/[^0-9]/g, '') || '918281096614',
+      ownerEmail: user.email.toLowerCase().trim(),
       ownerName: user.name,
       ownerAvatar: user.avatar,
       templateId: newStoreForm.templateId,
@@ -224,16 +241,6 @@ export default function DashboardPage() {
           price: 250,
           unit: '500 gm',
           imageUrl: PRODUCT_IMAGE_PRESETS[0].url,
-          inStock: true,
-          category: 'Specialty'
-        },
-        {
-          id: `prod-${Date.now()}-2`,
-          name: `${newStoreForm.name} Special Item 2`,
-          description: 'Authentic Kerala traditional recipe made with premium natural ingredients.',
-          price: 180,
-          unit: 'Pack of 1',
-          imageUrl: PRODUCT_IMAGE_PRESETS[2].url,
           inStock: true,
           category: 'Specialty'
         }
@@ -272,6 +279,32 @@ export default function DashboardPage() {
     const updated = { ...currentStore, templateId };
     setCurrentStore(updated);
     handleSaveStore(updated);
+  };
+
+  // Image file upload handler
+  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      setProductForm((prev) => ({ ...prev, imageUrl: data.url }));
+    } catch (err) {
+      console.error(err);
+      alert('Could not upload image. Please choose an image preset or paste an image URL.');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleOpenAddProduct = () => {
@@ -316,7 +349,7 @@ export default function DashboardPage() {
       );
     } else {
       const newProduct: Product = {
-        id: `prod-${Date.now()}`,
+        id: `prod-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         ...productForm,
         price: Number(productForm.price)
       };
@@ -380,11 +413,11 @@ export default function DashboardPage() {
           </div>
           <h2 className="text-2xl font-extrabold text-slate-900">Sign in to KadaLink</h2>
           <p className="text-xs text-slate-600 leading-relaxed">
-            Log in with your Google account to create your custom WhatsApp store or edit your existing products, prices, and templates anytime.
+            Log in with your Google account to create your custom WhatsApp store or edit your existing products, prices, and settings.
           </p>
           <button
             onClick={() => setIsAuthModalOpen(true)}
-            className="w-full py-3.5 px-4 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 flex items-center justify-center gap-2 shadow-sm transition-all"
+            className="w-full py-3.5 px-4 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
           >
             Sign in with Google
           </button>
@@ -405,7 +438,6 @@ export default function DashboardPage() {
   if (!currentStore || userStores.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
-        {/* Header */}
         <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2 font-black text-slate-900 text-lg">
             <span className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-sm font-black">
@@ -415,6 +447,15 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {isPlatformAdmin(user) && (
+              <Link
+                href="/admin"
+                className="px-2.5 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>Admin</span>
+              </Link>
+            )}
             <div className="flex items-center gap-2">
               <img src={user.avatar} alt={user.name} className="w-7 h-7 rounded-full border border-slate-200" />
               <span className="text-xs font-semibold text-slate-700 hidden sm:inline">{user.name}</span>
@@ -431,7 +472,6 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {/* Create Store Prompt */}
         <div className="max-w-2xl w-full mx-auto p-6 my-auto space-y-6">
           <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm text-center space-y-4">
             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto">
@@ -441,174 +481,25 @@ export default function DashboardPage() {
               Welcome, {user.name.split(' ')[0]}!
             </h2>
             <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-              You haven't created a WhatsApp store website yet. Let's create your first store in 60 seconds with your custom link, template, and UPI receiver!
+              You haven't launched a WhatsApp store yet. Create your first store in 60 seconds with your reserved custom handle and instant WhatsApp ordering!
             </p>
             <Link
               href="/onboarding"
               className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 inline-flex items-center gap-2 transition-all"
             >
               <Plus className="w-4 h-4" />
-              Create My Store in 3 Steps
+              <span>Create My Store in 2 Steps</span>
             </Link>
           </div>
         </div>
-
-        {/* Create Store Modal */}
-        {renderCreateStoreModal()}
       </div>
     );
   }
 
-  // Active Store URL
-  const storeShareableUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/store/${currentStore.slug}`
-    : `/store/${currentStore.slug}`;
-
-  function renderCreateStoreModal() {
-    if (!isCreateStoreModalOpen) return null;
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-        <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-xl w-full overflow-hidden">
-          <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
-            <div className="flex items-center gap-2">
-              <StoreIcon className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-extrabold text-slate-800 text-base">Create New WhatsApp Store</h3>
-            </div>
-            <button
-              onClick={() => setIsCreateStoreModalOpen(false)}
-              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200"
-            >
-              ✕
-            </button>
-          </div>
-
-          <form onSubmit={handleCreateNewStore} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Store / Business Name *</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Malabar Pickles, Kochi Sweet Studio, Nila Silks"
-                value={newStoreForm.name}
-                onChange={(e) => {
-                  const name = e.target.value;
-                  const autoSlug = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-                  setNewStoreForm({ ...newStoreForm, name, slug: autoSlug });
-                }}
-                className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Custom Shareable Link Slug *
-              </label>
-              <div className="flex items-center">
-                <span className="text-xs text-slate-400 bg-slate-100 px-3 py-2.5 border border-r-0 border-slate-300 rounded-l-xl font-mono">
-                  /store/
-                </span>
-                <input
-                  type="text"
-                  required
-                  placeholder="my-shop-name"
-                  value={newStoreForm.slug}
-                  onChange={(e) =>
-                    setNewStoreForm({
-                      ...newStoreForm,
-                      slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-                    })
-                  }
-                  className="w-full px-3 py-2.5 text-xs border border-slate-300 rounded-r-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono font-semibold text-slate-800"
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">This will be your shareable Instagram bio link.</p>
-            </div>
-
-            {/* Template Selector in Wizard */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-2">
-                Choose Website Theme Template *
-              </label>
-              <div className="grid grid-cols-2 gap-2.5">
-                {(Object.keys(TEMPLATES) as TemplateId[]).map((tId) => {
-                  const t = TEMPLATES[tId];
-                  const isSelected = newStoreForm.templateId === tId;
-                  return (
-                    <button
-                      type="button"
-                      key={tId}
-                      onClick={() => setNewStoreForm({ ...newStoreForm, templateId: tId })}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        isSelected
-                          ? 'border-emerald-600 ring-2 ring-emerald-500/20 bg-emerald-50/50'
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${t.badgeClass}`}>
-                        {t.badge.split('for ')[1] || t.name}
-                      </span>
-                      <h4 className="font-bold text-xs text-slate-800 mt-1">{t.name}</h4>
-                      <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{t.tagline}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  WhatsApp Number (Orders Recipient) *
-                </label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="918281096614"
-                  value={newStoreForm.whatsappNumber}
-                  onChange={(e) => setNewStoreForm({ ...newStoreForm, whatsappNumber: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-                />
-                <span className="text-[9px] text-slate-400">Include country code 91</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Merchant UPI ID (GPay / PhonePe) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="shop@okaxis"
-                  value={newStoreForm.upiId}
-                  onChange={(e) => setNewStoreForm({ ...newStoreForm, upiId: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-                />
-                <span className="text-[9px] text-slate-400">For instant customer QR payments</span>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setIsCreateStoreModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
-              >
-                {saving ? 'Creating Store...' : 'Launch Store & Get Link'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
+  const storeShareableUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/store/${currentStore.slug}`
+      : `/store/${currentStore.slug}`;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -650,12 +541,22 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {/* Right header actions */}
+        {/* Right actions */}
         <div className="flex items-center gap-2.5">
           {saveSuccess && (
             <span className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full animate-fadeIn">
               <Check className="w-3.5 h-3.5" /> Saved Live!
             </span>
+          )}
+
+          {isPlatformAdmin(user) && (
+            <Link
+              href="/admin"
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-bold transition-all"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span>Admin Console</span>
+            </Link>
           )}
 
           <a
@@ -695,20 +596,19 @@ export default function DashboardPage() {
           <div className="space-y-1.5 flex-1">
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded-md bg-emerald-400/20 text-emerald-200 text-[10px] font-extrabold uppercase tracking-wider border border-emerald-400/30">
-                Your Shareable Store Link
+                Permanent Store Link
               </span>
-              <span className="text-xs text-emerald-200">Live 24/7 for Customers</span>
+              <span className="text-xs text-emerald-200">Reserved for You</span>
             </div>
             <h2 className="text-xl font-black text-white">{currentStore.name}</h2>
-            
-            {/* The Link with Copy Button */}
+
             <div className="flex items-center gap-2 pt-1 max-w-xl">
               <div className="flex-1 bg-black/30 border border-white/20 rounded-xl px-3 py-2 text-xs font-mono text-emerald-100 truncate">
                 {storeShareableUrl}
               </div>
               <button
                 onClick={handleCopyLink}
-                className="px-3.5 py-2 bg-white text-slate-900 hover:bg-emerald-50 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 flex-shrink-0"
+                className="px-3.5 py-2 bg-white text-slate-900 hover:bg-emerald-50 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
               >
                 {copiedLink ? (
                   <>
@@ -728,10 +628,10 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2.5 w-full md:w-auto">
             <button
               onClick={() => setIsShareModalOpen(true)}
-              className="flex-1 md:flex-initial px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center justify-center gap-1.5"
+              className="flex-1 md:flex-initial px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Share2 className="w-4 h-4" />
-              <span>Share & QR Code</span>
+              <span>Share Store Link</span>
             </button>
             <a
               href={`/store/${currentStore.slug}`}
@@ -740,7 +640,7 @@ export default function DashboardPage() {
               className="flex-1 md:flex-initial px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 transition-all flex items-center justify-center gap-1.5"
             >
               <ExternalLink className="w-4 h-4" />
-              <span>Preview Customer View</span>
+              <span>View Storefront</span>
             </a>
           </div>
         </div>
@@ -748,50 +648,340 @@ export default function DashboardPage() {
         {/* Navigation Tabs */}
         <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1">
           <button
-            onClick={() => setActiveTab('template')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
-              activeTab === 'template'
-                ? 'bg-slate-900 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Palette className="w-4 h-4" />
-            <span>Select Template ({TEMPLATES[currentStore.templateId]?.name || 'Template'})</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('products')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'products'
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>Manage Products ({currentStore.products.length})</span>
+            <span>Products & Catalog ({currentStore.products.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'settings'
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
             <Settings className="w-4 h-4" />
-            <span>Store Details, WhatsApp & UPI</span>
+            <span>Store Link, WhatsApp & Delivery</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('template')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'template'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Palette className="w-4 h-4" />
+            <span>Theme Template ({TEMPLATES[currentStore.templateId]?.name || 'Template'})</span>
           </button>
         </div>
 
-        {/* TAB 1: TEMPLATE SELECTION */}
+        {/* TAB 1: PRODUCTS CATALOG */}
+        {activeTab === 'products' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Products for {currentStore.name}</h3>
+                <p className="text-xs text-slate-500">
+                  Add items with real photo uploads, toggle in-stock status, or adjust prices.
+                </p>
+              </div>
+              <button
+                onClick={handleOpenAddProduct}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Upload New Product</span>
+              </button>
+            </div>
+
+            {currentStore.products.length === 0 ? (
+              <div className="p-12 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
+                <Package className="w-10 h-10 text-slate-300 mx-auto" />
+                <h4 className="font-bold text-slate-700 text-sm">No products listed yet</h4>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  Add your first item to start receiving orders on WhatsApp.
+                </p>
+                <button
+                  onClick={handleOpenAddProduct}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Upload First Product
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentStore.products.map((product) => (
+                  <div
+                    key={product.id}
+                    className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="relative aspect-[16/10] bg-slate-100 overflow-hidden">
+                        <img
+                          src={product.imageUrl}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-[10px] font-semibold bg-black/60 text-white">
+                          {product.unit}
+                        </span>
+                        <button
+                          onClick={() => handleToggleStock(product.id)}
+                          className={`absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold shadow-sm transition-all ${
+                            product.inStock ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+                          }`}
+                        >
+                          {product.inStock ? 'In Stock' : 'Out of Stock'}
+                        </button>
+                      </div>
+
+                      <div className="p-4 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            {product.category || 'General'}
+                          </span>
+                          <span className="font-extrabold text-slate-900 text-sm">₹{product.price}</span>
+                        </div>
+                        <h4 className="font-bold text-slate-800 text-sm leading-snug">{product.name}</h4>
+                        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                          {product.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                      <button
+                        onClick={() => handleToggleStock(product.id)}
+                        className="text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+                      >
+                        {product.inStock ? 'Mark Sold Out' : 'Mark In Stock'}
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenEditProduct(product)}
+                          className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                          title="Edit Product"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteProduct(product.id)}
+                          className="p-1.5 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                          title="Delete Product"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: STORE SETTINGS */}
+        {activeTab === 'settings' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSaveStore();
+            }}
+            className="space-y-6 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Store Link & Ordering Settings</h3>
+                <p className="text-xs text-slate-500">
+                  Update your store identity, WhatsApp checkout phone, and delivery rates.
+                </p>
+              </div>
+              <button
+                type="submit"
+                disabled={saving || settingsSlugStatus === 'taken'}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{saving ? 'Saving...' : 'Save Settings'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Store Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={currentStore.name}
+                  onChange={(e) => setCurrentStore({ ...currentStore, name: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Store Link Handle *</span>
+                  {settingsSlugStatus === 'available' && (
+                    <span className="text-[11px] text-emerald-600 font-bold">✓ Handle Available</span>
+                  )}
+                  {settingsSlugStatus === 'taken' && (
+                    <span className="text-[11px] text-rose-600 font-bold">✗ Handle Already Taken</span>
+                  )}
+                </label>
+                <div className="flex items-center">
+                  <span className="text-xs text-slate-400 bg-slate-100 px-3 py-2.5 border border-r-0 border-slate-300 rounded-l-xl font-mono">
+                    /store/
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    value={currentStore.slug}
+                    onChange={(e) => {
+                      const newSlug = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                      setCurrentStore({ ...currentStore, slug: newSlug });
+                      checkSettingsSlug(newSlug);
+                    }}
+                    className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-r-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Tagline</label>
+              <input
+                type="text"
+                value={currentStore.tagline}
+                onChange={(e) => setCurrentStore({ ...currentStore, tagline: e.target.value })}
+                className="w-full px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Store Description</label>
+              <textarea
+                rows={3}
+                value={currentStore.description}
+                onChange={(e) => setCurrentStore({ ...currentStore, description: e.target.value })}
+                className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none leading-relaxed"
+              />
+            </div>
+
+            <div className="pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                WhatsApp Ordering Number *
+              </label>
+              <div className="relative max-w-sm">
+                <Phone className="w-4 h-4 text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  required
+                  placeholder="918281096614"
+                  value={currentStore.whatsappNumber}
+                  onChange={(e) =>
+                    setCurrentStore({
+                      ...currentStore,
+                      whatsappNumber: e.target.value.replace(/[^0-9]/g, '')
+                    })
+                  }
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono font-bold"
+                />
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">Include country code 91 without spaces or + sign.</p>
+            </div>
+
+            {/* Delivery Fees */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Flat Delivery Fee (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={currentStore.deliverySettings.flatFee}
+                  onChange={(e) =>
+                    setCurrentStore({
+                      ...currentStore,
+                      deliverySettings: {
+                        ...currentStore.deliverySettings,
+                        flatFee: Number(e.target.value)
+                      }
+                    })
+                  }
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Free Delivery Above (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={currentStore.deliverySettings.freeAboveThreshold}
+                  onChange={(e) =>
+                    setCurrentStore({
+                      ...currentStore,
+                      deliverySettings: {
+                        ...currentStore.deliverySettings,
+                        freeAboveThreshold: Number(e.target.value)
+                      }
+                    })
+                  }
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Courier / Dispatch Notes</label>
+                <input
+                  type="text"
+                  value={currentStore.deliverySettings.deliveryNotes || ''}
+                  onChange={(e) =>
+                    setCurrentStore({
+                      ...currentStore,
+                      deliverySettings: {
+                        ...currentStore.deliverySettings,
+                        deliveryNotes: e.target.value
+                      }
+                    })
+                  }
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 flex justify-end">
+              <button
+                type="submit"
+                disabled={saving || settingsSlugStatus === 'taken'}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{saving ? 'Saving...' : 'Save Settings'}</span>
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* TAB 3: THEME TEMPLATE */}
         {activeTab === 'template' && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <h3 className="text-base font-bold text-slate-800">Select Website Template</h3>
+                <h3 className="text-base font-bold text-slate-800">Choose Website Theme</h3>
                 <p className="text-xs text-slate-500">
-                  Switch the theme and styling of your storefront with a single tap. Saves immediately.
+                  Switch the visual aesthetic of your storefront. Changes save immediately.
                 </p>
               </div>
               <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full w-fit">
@@ -811,7 +1001,7 @@ export default function DashboardPage() {
                     className={`cursor-pointer rounded-2xl border-2 p-5 transition-all text-left relative bg-white flex flex-col justify-between space-y-4 ${
                       isSelected
                         ? 'border-emerald-600 ring-2 ring-emerald-500/20 shadow-md'
-                        : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300 hover:shadow-xs'
                     }`}
                   >
                     <div>
@@ -842,7 +1032,7 @@ export default function DashboardPage() {
                           <div className="h-2 w-10 bg-slate-200 rounded" />
                         </div>
                         <button className={`text-[10px] px-2.5 py-1 rounded font-bold ${t.primaryButtonClass}`}>
-                          Add
+                          Order
                         </button>
                       </div>
                     </div>
@@ -852,406 +1042,139 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-
-        {/* TAB 2: PRODUCTS CATALOG */}
-        {activeTab === 'products' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-slate-800">Products for {currentStore.name}</h3>
-                <p className="text-xs text-slate-500">
-                  Update descriptions, change prices, toggle stock, or add new items.
-                </p>
-              </div>
-              <button
-                onClick={handleOpenAddProduct}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
-              >
-                <Plus className="w-4 h-4" />
-                Add New Product
-              </button>
-            </div>
-
-            {currentStore.products.length === 0 ? (
-              <div className="p-12 bg-white rounded-2xl border border-slate-200 text-center space-y-3">
-                <Package className="w-10 h-10 text-slate-300 mx-auto" />
-                <h4 className="font-bold text-slate-700 text-sm">No products listed yet</h4>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Add items to your catalog so customers can order them on WhatsApp.
-                </p>
-                <button
-                  onClick={handleOpenAddProduct}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold"
-                >
-                  Add Product
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {currentStore.products.map((product) => (
-                  <div
-                    key={product.id}
-                    className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="relative aspect-[16/10] bg-slate-100 overflow-hidden">
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          className="w-full h-full object-cover"
-                        />
-                        <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded text-[10px] font-semibold bg-black/60 text-white">
-                          {product.unit}
-                        </span>
-                        <button
-                          onClick={() => handleToggleStock(product.id)}
-                          className={`absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold shadow-sm transition-all ${
-                            product.inStock
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-rose-600 text-white'
-                          }`}
-                        >
-                          {product.inStock ? 'In Stock' : 'Out of Stock'}
-                        </button>
-                      </div>
-
-                      <div className="p-4 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            {product.category || 'General'}
-                          </span>
-                          <span className="font-extrabold text-slate-900 text-sm">₹{product.price}</span>
-                        </div>
-                        <h4 className="font-bold text-slate-800 text-sm leading-snug">{product.name}</h4>
-                        <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
-                          {product.description}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="p-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                      <button
-                        onClick={() => handleToggleStock(product.id)}
-                        className="text-xs font-semibold text-slate-600 hover:text-slate-900"
-                      >
-                        {product.inStock ? 'Mark Sold Out' : 'Mark In Stock'}
-                      </button>
-
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleOpenEditProduct(product)}
-                          className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-slate-200 transition-colors"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProduct(product.id)}
-                          className="p-1.5 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-slate-200 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 3: STORE INFO & UPI SETTINGS */}
-        {activeTab === 'settings' && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSaveStore();
-            }}
-            className="space-y-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-base font-bold text-slate-800">Store Profile & Payment Settings</h3>
-                <p className="text-xs text-slate-500">
-                  Update your store identity, WhatsApp checkout number, and UPI payment receiver.
-                </p>
-              </div>
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {saving ? 'Saving...' : 'Save Settings'}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Store Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={currentStore.name}
-                  onChange={(e) => setCurrentStore({ ...currentStore, name: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Custom Shareable Link Slug *
-                </label>
-                <div className="flex items-center">
-                  <span className="text-xs text-slate-400 bg-slate-100 px-3 py-2 border border-r-0 border-slate-300 rounded-l-xl">
-                    /store/
-                  </span>
-                  <input
-                    type="text"
-                    required
-                    value={currentStore.slug}
-                    onChange={(e) =>
-                      setCurrentStore({
-                        ...currentStore,
-                        slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-                      })
-                    }
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-r-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Store Tagline</label>
-              <input
-                type="text"
-                value={currentStore.tagline}
-                onChange={(e) => setCurrentStore({ ...currentStore, tagline: e.target.value })}
-                placeholder="e.g. Traditional homemade Kozhikode pickles made in pure coconut oil"
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Store Description</label>
-              <textarea
-                rows={3}
-                value={currentStore.description}
-                onChange={(e) => setCurrentStore({ ...currentStore, description: e.target.value })}
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none leading-relaxed"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  WhatsApp Number (Orders Received Here) *
-                </label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. 918281096614"
-                    value={currentStore.whatsappNumber}
-                    onChange={(e) => setCurrentStore({ ...currentStore, whatsappNumber: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">Include country code 91 without spaces or + sign.</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Merchant UPI ID (For QR Code Payments) *
-                </label>
-                <div className="relative">
-                  <CreditCard className="w-4 h-4 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. yourshop@okaxis or 9847000000@paytm"
-                    value={currentStore.upiId}
-                    onChange={(e) => setCurrentStore({ ...currentStore, upiId: e.target.value })}
-                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Generates live UPI QR codes for Google Pay, PhonePe, and Paytm.
-                </p>
-              </div>
-            </div>
-
-            {/* Delivery Fees */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Flat Delivery Fee (₹)</label>
-                <input
-                  type="number"
-                  value={currentStore.deliverySettings.flatFee}
-                  onChange={(e) =>
-                    setCurrentStore({
-                      ...currentStore,
-                      deliverySettings: {
-                        ...currentStore.deliverySettings,
-                        flatFee: Number(e.target.value)
-                      }
-                    })
-                  }
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Free Delivery on Orders Above (₹)
-                </label>
-                <input
-                  type="number"
-                  value={currentStore.deliverySettings.freeAboveThreshold}
-                  onChange={(e) =>
-                    setCurrentStore({
-                      ...currentStore,
-                      deliverySettings: {
-                        ...currentStore.deliverySettings,
-                        freeAboveThreshold: Number(e.target.value)
-                      }
-                    })
-                  }
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Courier / Dispatch Notes</label>
-                <input
-                  type="text"
-                  value={currentStore.deliverySettings.deliveryNotes || ''}
-                  onChange={(e) =>
-                    setCurrentStore({
-                      ...currentStore,
-                      deliverySettings: {
-                        ...currentStore.deliverySettings,
-                        deliveryNotes: e.target.value
-                      }
-                    })
-                  }
-                  placeholder="e.g. Speed Post dispatch in 24 hours"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="pt-4 flex justify-end">
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {saving ? 'Saving...' : 'Save All Settings'}
-              </button>
-            </div>
-          </form>
-        )}
       </div>
 
       {/* Product Add / Edit Modal */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
               <h3 className="font-bold text-slate-800 text-sm">
-                {editingProduct ? 'Edit Product' : 'Add New Product'}
+                {editingProduct ? 'Edit Product' : 'Upload New Product'}
               </h3>
               <button
                 onClick={() => setIsProductModalOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveProduct} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Product Title *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Product Title *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Cut Mango Pickle or Belgian Brownie Box"
                   value={productForm.name}
                   onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Price (₹) *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Price (₹) *</label>
                   <input
                     type="number"
                     required
                     min="1"
                     value={productForm.price}
                     onChange={(e) => setProductForm({ ...productForm, price: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Unit / Size *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Unit / Packaging *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. 500 gm, 1 Kg, Free Size"
+                    placeholder="e.g. 500 gm, 1 Kg, Piece"
                     value={productForm.unit}
                     onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
-                <textarea
-                  rows={2}
-                  placeholder="Key ingredients, taste, details..."
-                  value={productForm.description}
-                  onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                <label className="block text-xs font-bold text-slate-700 mb-1">Category</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Pickles, Cakes, Snacks"
+                  value={productForm.category}
+                  onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
+                  className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
 
-              {/* Quick Image Preset Selector */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Product Image (Select Kerala Preset or Enter URL)
-                </label>
-                <div className="grid grid-cols-4 gap-2 mb-2">
-                  {PRODUCT_IMAGE_PRESETS.map((preset) => (
-                    <button
-                      type="button"
-                      key={preset.name}
-                      onClick={() => setProductForm({ ...productForm, imageUrl: preset.url })}
-                      className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
-                        productForm.imageUrl === preset.url
-                          ? 'border-emerald-600 ring-2 ring-emerald-500/20'
-                          : 'border-slate-200 hover:border-slate-300 opacity-70 hover:opacity-100'
-                      }`}
-                    >
-                      <img src={preset.url} alt={preset.name} className="w-full h-full object-cover" />
-                      <span className="absolute inset-x-0 bottom-0 bg-black/70 text-[9px] text-white py-0.5 truncate px-1 text-center">
-                        {preset.name}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="url"
-                  placeholder="Or paste any image URL..."
-                  value={productForm.imageUrl}
-                  onChange={(e) => setProductForm({ ...productForm, imageUrl: e.target.value })}
-                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono text-slate-600"
+                <label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  placeholder="Ingredients, taste, or packaging details..."
+                  value={productForm.description}
+                  onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                  className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
+              </div>
+
+              {/* Real Image File Upload */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700">
+                  Product Photo (Upload File or Pick Preset)
+                </label>
+
+                <div className="flex items-center gap-3">
+                  <label className="flex-1 border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-3 text-center cursor-pointer transition-colors bg-slate-50">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProductImageUpload}
+                      className="hidden"
+                      disabled={uploadingImage}
+                    />
+                    <div className="flex items-center justify-center gap-2 text-xs font-bold text-slate-700">
+                      <Upload className="w-4 h-4 text-emerald-600" />
+                      <span>{uploadingImage ? 'Uploading photo...' : 'Choose photo from device'}</span>
+                    </div>
+                  </label>
+
+                  {productForm.imageUrl && (
+                    <img
+                      src={productForm.imageUrl}
+                      alt="Preview"
+                      className="w-12 h-12 rounded-xl object-cover border border-slate-200 flex-shrink-0"
+                    />
+                  )}
+                </div>
+
+                {/* Preset image buttons */}
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    Or select a catalog preset:
+                  </span>
+                  <div className="grid grid-cols-4 gap-2 pt-1.5">
+                    {PRODUCT_IMAGE_PRESETS.map((preset) => (
+                      <button
+                        type="button"
+                        key={preset.name}
+                        onClick={() => setProductForm({ ...productForm, imageUrl: preset.url })}
+                        className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                          productForm.imageUrl === preset.url
+                            ? 'border-emerald-600 ring-2 ring-emerald-500/20'
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <img src={preset.url} alt={preset.name} className="w-full h-full object-cover" />
+                        <span className="absolute inset-x-0 bottom-0 bg-black/70 text-[9px] text-white py-0.5 truncate px-1 text-center">
+                          {preset.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-2">
@@ -1277,7 +1200,8 @@ export default function DashboardPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm"
+                  disabled={uploadingImage}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
                 >
                   {editingProduct ? 'Save Product' : 'Add to Store'}
                 </button>
@@ -1295,9 +1219,6 @@ export default function DashboardPage() {
           store={currentStore}
         />
       )}
-
-      {/* Create Store Modal */}
-      {renderCreateStoreModal()}
     </div>
   );
 }

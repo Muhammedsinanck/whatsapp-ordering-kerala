@@ -2,25 +2,20 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getStoredUser, clearStoredUser } from '@/lib/auth';
+import { getStoredUser } from '@/lib/auth';
 import { User, Store, TemplateId, Product } from '@/types';
 import { TEMPLATES } from '@/lib/templates';
 import {
-  Store as StoreIcon,
   Sparkles,
-  CheckCircle2,
   ArrowRight,
   ArrowLeft,
   Phone,
-  CreditCard,
-  Palette,
-  Layers,
-  ShoppingBag,
-  Truck,
+  CheckCircle2,
   AlertCircle,
+  ShoppingBag,
+  Store as StoreIcon,
   Check,
-  ExternalLink,
-  LogOut
+  Truck
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -126,7 +121,7 @@ const CATEGORY_PRESETS: CategoryPreset[] = [
     name: 'Honey & Natural Organics',
     icon: '🍯',
     defaultTemplate: 'kerala-heritage',
-    tagline: '100% pure wild honey, spices & organic foods from Western Ghats',
+    tagline: '100% pure wild honey & organic foods from Western Ghats',
     products: [
       {
         id: 'prod-preset-7',
@@ -147,16 +142,16 @@ export default function OnboardingPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Wizard Step: 1 = Basic Info, 2 = WhatsApp & UPI, 3 = Template & Category
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  // Simplified 2-step setup: 1 = Basic Info, 2 = Theme & Launch
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
 
   // Form Fields
   const [storeName, setStoreName] = useState('');
   const [slug, setSlug] = useState('');
   const [tagline, setTagline] = useState('');
   const [slugStatus, setSlugStatus] = useState<'checking' | 'available' | 'taken' | 'idle'>('idle');
+  const [slugError, setSlugError] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [upiId, setUpiId] = useState('');
   const [flatFee, setFlatFee] = useState<number>(50);
   const [freeAboveThreshold, setFreeAboveThreshold] = useState<number>(500);
   const [selectedCategory, setSelectedCategory] = useState<string>('pickles');
@@ -174,21 +169,17 @@ export default function OnboardingPage() {
     }
     setUser(currentUser);
 
-    // Sensible defaults from user profile
     const firstName = currentUser.name.split(' ')[0] || 'My';
     const initialStoreName = `${firstName}'s Store`;
     setStoreName(initialStoreName);
     const initialSlug = firstName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-store';
     setSlug(initialSlug);
     setWhatsappNumber(currentUser.phone || '918281096614');
-    setUpiId(`${firstName.toLowerCase().replace(/[^a-z0-9]/g, '')}@okaxis`);
     setLoading(false);
 
-    // Initial slug check
     checkSlugAvailability(initialSlug);
   }, []);
 
-  // Slug auto-generation when storeName changes (if user hasn't manually edited slug)
   const handleStoreNameChange = (val: string) => {
     setStoreName(val);
     const generated = val
@@ -213,13 +204,20 @@ export default function OnboardingPage() {
   const checkSlugAvailability = async (slugToCheck: string) => {
     if (!slugToCheck || slugToCheck.length < 3) {
       setSlugStatus('idle');
+      setSlugError('Handle must be at least 3 characters');
       return;
     }
     setSlugStatus('checking');
     try {
       const res = await fetch(`/api/stores/check-slug?slug=${encodeURIComponent(slugToCheck)}`);
       const data = await res.json();
-      setSlugStatus(data.available ? 'available' : 'taken');
+      if (data.available) {
+        setSlugStatus('available');
+        setSlugError('');
+      } else {
+        setSlugStatus('taken');
+        setSlugError(data.reason || 'This handle is already taken by another store');
+      }
     } catch {
       setSlugStatus('idle');
     }
@@ -255,13 +253,11 @@ export default function OnboardingPage() {
     const newStore: Store = {
       id: `store-${slug}-${Date.now().toString().slice(-4)}`,
       slug: slug,
-      name: storeName,
-      tagline: tagline || (preset ? preset.tagline : 'Homemade & handcrafted with love from Kerala'),
-      description: 'Order directly via WhatsApp with instant UPI QR payment. Handcrafted fresh in Kerala.',
+      name: storeName.trim(),
+      tagline: tagline.trim() || (preset ? preset.tagline : 'Homemade & handcrafted with love from Kerala'),
+      description: 'Order directly via WhatsApp. Fast shipping across Kerala.',
       whatsappNumber: whatsappNumber.replace(/[^0-9]/g, '') || '918281096614',
-      upiId: upiId || `${slug}@okaxis`,
-      upiName: storeName,
-      ownerEmail: user.email,
+      ownerEmail: user.email.toLowerCase().trim(),
       ownerName: user.name,
       ownerAvatar: user.avatar,
       templateId: selectedTemplate,
@@ -294,11 +290,11 @@ export default function OnboardingPage() {
         return;
       }
 
-      // Store created successfully! Redirect to dashboard with celebration parameter
+      // Store created successfully!
       router.push('/dashboard?created=true');
     } catch (err) {
       console.error('Store creation error:', err);
-      setErrorMessage('Network error while creating your store.');
+      setErrorMessage('Network error creating your store. Please try again.');
       setIsSubmitting(false);
     }
   };
@@ -308,7 +304,7 @@ export default function OnboardingPage() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="text-center space-y-3">
           <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs font-semibold text-slate-600">Loading store builder wizard...</p>
+          <p className="text-xs text-slate-500 font-medium">Setting up your store creator...</p>
         </div>
       </div>
     );
@@ -316,313 +312,193 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm font-black text-sm">
-            K
+      {/* Top Bar */}
+      <header className="bg-white border-b border-slate-200 py-3.5 px-4 sm:px-8 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-green-500 flex items-center justify-center text-white font-bold text-xs shadow-xs">
+            KL
           </div>
-          <div>
-            <div className="font-extrabold text-slate-900 text-base">
-              KadaLink <span className="text-emerald-600">Store Setup</span>
-            </div>
-            <div className="text-[10px] text-slate-400 -mt-0.5">3-Minute Store Onboarding</div>
-          </div>
+          <span className="font-extrabold text-slate-900 text-sm">KadaLink Kerala</span>
         </Link>
 
         {user && (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <img src={user.avatar} alt={user.name} className="w-7 h-7 rounded-full border border-slate-200" />
-              <span className="text-xs font-semibold text-slate-700 hidden sm:inline">{user.name}</span>
-            </div>
-            <button
-              onClick={() => {
-                clearStoredUser();
-                router.push('/login');
-              }}
-              className="text-xs text-slate-400 hover:text-rose-600 font-semibold"
-            >
-              Sign out
-            </button>
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <img src={user.avatar} alt={user.name} className="w-6 h-6 rounded-full border border-slate-200" />
+            <span className="font-semibold hidden sm:inline">{user.name}</span>
           </div>
         )}
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-3xl w-full mx-auto p-4 sm:p-6 my-4">
-        {/* Step Progress Bar */}
-        <div className="mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-600">
-            <button
-              type="button"
-              onClick={() => setCurrentStep(1)}
-              className={`flex items-center gap-2 ${currentStep === 1 ? 'text-emerald-600 font-black' : currentStep > 1 ? 'text-slate-900' : 'text-slate-400'}`}
+      {/* Main Container */}
+      <main className="max-w-2xl w-full mx-auto px-4 py-8 sm:py-12">
+        {/* Step Indicator */}
+        <div className="mb-8">
+          <div className="flex items-center justify-center gap-3 text-xs font-bold">
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all ${
+                currentStep === 1
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-emerald-100 text-emerald-800'
+              }`}
             >
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${currentStep >= 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>
-                1
-              </span>
-              <span>1. Store Basics</span>
-            </button>
-
-            <div className="w-8 sm:w-16 h-0.5 bg-slate-200" />
-
-            <button
-              type="button"
-              onClick={() => {
-                if (storeName && slug) setCurrentStep(2);
-              }}
-              className={`flex items-center gap-2 ${currentStep === 2 ? 'text-emerald-600 font-black' : currentStep > 2 ? 'text-slate-900' : 'text-slate-400'}`}
+              <span>1. Store Handle & WhatsApp</span>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all ${
+                currentStep === 2
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-200 text-slate-600'
+              }`}
             >
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${currentStep >= 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>
-                2
-              </span>
-              <span>2. WhatsApp & UPI</span>
-            </button>
-
-            <div className="w-8 sm:w-16 h-0.5 bg-slate-200" />
-
-            <button
-              type="button"
-              onClick={() => {
-                if (storeName && slug && whatsappNumber) setCurrentStep(3);
-              }}
-              className={`flex items-center gap-2 ${currentStep === 3 ? 'text-emerald-600 font-black' : 'text-slate-400'}`}
-            >
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${currentStep === 3 ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>
-                3
-              </span>
-              <span>3. Template & Launch</span>
-            </button>
+              <span>2. Category & Theme</span>
+            </div>
           </div>
         </div>
 
-        {/* Error message */}
         {errorMessage && (
-          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs flex items-center gap-2">
+          <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2.5 animate-fadeIn">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
 
         <form onSubmit={handleLaunchStore} className="space-y-6">
-          {/* STEP 1: STORE BASICS */}
+          {/* STEP 1: STORE NAME, HANDLE & WHATSAPP */}
           {currentStep === 1 && (
             <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6 animate-fadeIn">
               <div className="space-y-1">
                 <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                  Step 1 of 3
+                  Step 1 of 2
                 </span>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 pt-1">
-                  Name Your WhatsApp Store & Bio Link
+                  Name Your Store & Choose Your Permanent Link
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Choose your shop brand name and custom website address.
+                  Your store link cannot be taken by anyone else once reserved.
                 </p>
               </div>
 
               <div className="space-y-4">
+                {/* Store Name */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Store / Brand Name <span className="text-rose-500">*</span>
+                    Store / Business Name *
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Kozhikode Halwa Corner, Malabar Taste, Anjali Bakes"
                     value={storeName}
                     onChange={(e) => handleStoreNameChange(e.target.value)}
-                    className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-semibold text-slate-900"
+                    placeholder="e.g. Malabar Sweets & Pickles"
+                    className="w-full px-4 py-3 text-sm font-semibold border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900"
                     required
                   />
                 </div>
 
+                {/* Slug Handle */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Custom Store Bio Link Handle (URL) <span className="text-rose-500">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>Your Permanent Store Handle *</span>
+                    <span className="text-[11px] font-normal text-slate-400">
+                      Cannot be taken later
+                    </span>
                   </label>
-                  <div className="flex items-center rounded-xl border border-slate-300 focus-within:ring-2 focus-within:ring-emerald-500 overflow-hidden bg-slate-50">
-                    <span className="px-3 text-xs text-slate-400 font-mono select-none">
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3.5 text-xs font-mono text-slate-400 font-medium select-none">
                       kadalink.in/store/
                     </span>
                     <input
                       type="text"
-                      placeholder="my-store-name"
                       value={slug}
                       onChange={(e) => handleSlugChange(e.target.value)}
-                      className="w-full py-2.5 pr-3 bg-white text-xs font-bold font-mono text-emerald-700 focus:outline-none"
+                      placeholder="my-shop"
+                      className="w-full pl-36 pr-10 py-3 text-sm font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 font-bold"
                       required
                     />
+                    <div className="absolute right-3">
+                      {slugStatus === 'checking' && (
+                        <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                      )}
+                      {slugStatus === 'available' && (
+                        <Check className="w-4 h-4 text-emerald-600" />
+                      )}
+                      {slugStatus === 'taken' && (
+                        <AlertCircle className="w-4 h-4 text-rose-500" />
+                      )}
+                    </div>
                   </div>
 
-                  {/* Slug availability indicator */}
-                  <div className="mt-1.5 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400">This will be your shareable Instagram Bio link.</span>
-                    {slugStatus === 'checking' && (
-                      <span className="text-slate-400 flex items-center gap-1">Checking link...</span>
-                    )}
+                  {/* Slug feedback badge */}
+                  <div className="mt-1.5 flex items-center gap-1.5 text-[11px]">
                     {slugStatus === 'available' && (
-                      <span className="text-emerald-600 font-bold flex items-center gap-1">
-                        <Check className="w-3.5 h-3.5" /> Link available!
+                      <span className="text-emerald-700 font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Handle is available and will be permanently reserved for you!
                       </span>
                     )}
                     {slugStatus === 'taken' && (
-                      <span className="text-rose-600 font-bold flex items-center gap-1">
-                        ✕ Handle already taken! Try another
+                      <span className="text-rose-600 font-medium flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {slugError || 'This handle is already taken. Please pick another name.'}
                       </span>
                     )}
                   </div>
                 </div>
 
+                {/* WhatsApp Number */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Short Tagline / Catchphrase
+                    WhatsApp Number for Receiving Orders *
                   </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 100% Homemade Pickles & Pure Coconut Oil Chips"
-                    value={tagline}
-                    onChange={(e) => setTagline(e.target.value)}
-                    className="w-full px-4 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-700"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      value={whatsappNumber}
+                      onChange={(e) => setWhatsappNumber(e.target.value)}
+                      placeholder="9876543210"
+                      className="w-full pl-12 pr-4 py-3 text-sm font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 font-bold"
+                      required
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Customer orders will be sent directly to this WhatsApp number in 1-click.
+                  </p>
                 </div>
               </div>
 
-              <div className="pt-4 flex justify-end">
+              <div className="pt-4 flex items-center justify-end">
                 <button
                   type="button"
-                  disabled={!storeName.trim() || !slug.trim() || slugStatus === 'taken'}
+                  disabled={!storeName.trim() || !slug.trim() || slugStatus === 'taken' || !whatsappNumber.trim()}
                   onClick={() => setCurrentStep(2)}
-                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-2 transition-all cursor-pointer"
+                  className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-2 transition-all cursor-pointer"
                 >
-                  <span>Continue to WhatsApp & UPI</span>
+                  <span>Continue to Category & Theme</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP 2: WHATSAPP & UPI DETAILS */}
+          {/* STEP 2: CATEGORY, THEME & LAUNCH */}
           {currentStep === 2 && (
             <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6 animate-fadeIn">
               <div className="space-y-1">
                 <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                  Step 2 of 3
+                  Step 2 of 2
                 </span>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 pt-1">
-                  Connect WhatsApp Orders & Instant UPI Payment
+                  Select Category & Visual Theme
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Where should customers send order messages, and where should payments go?
+                  We'll pre-load your store with starter products so you can immediately preview and customize it.
                 </p>
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    WhatsApp Order Number <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 text-emerald-600 absolute left-3 top-3" />
-                    <input
-                      type="tel"
-                      placeholder="918281096614 (include 91 for India)"
-                      value={whatsappNumber}
-                      onChange={(e) => setWhatsappNumber(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2.5 text-xs font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 font-bold"
-                      required
-                    />
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    When a customer taps "Place Order on WhatsApp", the formatted order invoice will open directly in this WhatsApp chat.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Merchant UPI ID (GPay / PhonePe / Paytm / BHIM) <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <CreditCard className="w-4 h-4 text-emerald-600 absolute left-3 top-3" />
-                    <input
-                      type="text"
-                      placeholder="e.g. malabartaste@okaxis or 9846012345@paytm"
-                      value={upiId}
-                      onChange={(e) => setUpiId(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2.5 text-xs font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 font-bold"
-                      required
-                    />
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Our system dynamically embeds this UPI ID into customer QR codes during checkout. Money goes 100% directly to your bank account with zero middleman fee.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Standard Delivery Fee (₹)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={flatFee}
-                      onChange={(e) => setFlatFee(Number(e.target.value))}
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Free Delivery Above (₹)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={freeAboveThreshold}
-                      onChange={(e) => setFreeAboveThreshold(Number(e.target.value))}
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep(1)}
-                  className="px-5 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Back</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={!whatsappNumber.trim() || !upiId.trim()}
-                  onClick={() => setCurrentStep(3)}
-                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-2 transition-all cursor-pointer"
-                >
-                  <span>Continue to Template & Launch</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3: TEMPLATE & CATEGORY */}
-          {currentStep === 3 && (
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6 animate-fadeIn">
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                  Step 3 of 3
-                </span>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900 pt-1">
-                  Choose Business Category & Aesthetic Theme
-                </h2>
-                <p className="text-xs text-slate-500">
-                  We'll automatically set up your starter catalog and aesthetic styling (you can change this anytime).
-                </p>
-              </div>
-
-              {/* Business Categories */}
+              {/* Categories */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-700">What do you sell?</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -633,7 +509,7 @@ export default function OnboardingPage() {
                         key={cat.id}
                         type="button"
                         onClick={() => handleCategorySelect(cat.id)}
-                        className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all ${
+                        className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
                           isSelected
                             ? 'border-emerald-600 bg-emerald-50/50 ring-2 ring-emerald-500/20'
                             : 'border-slate-200 hover:border-slate-300 bg-white'
@@ -652,9 +528,9 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              {/* Template selection */}
+              {/* Theme Selection */}
               <div className="space-y-2 pt-2">
-                <label className="block text-xs font-bold text-slate-700">Visual Theme Template</label>
+                <label className="block text-xs font-bold text-slate-700">Visual Theme</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {(Object.keys(TEMPLATES) as TemplateId[]).map((tid) => {
                     const t = TEMPLATES[tid];
@@ -664,7 +540,7 @@ export default function OnboardingPage() {
                         key={tid}
                         type="button"
                         onClick={() => setSelectedTemplate(tid)}
-                        className={`p-3 rounded-2xl border text-center transition-all ${
+                        className={`p-3 rounded-2xl border text-center transition-all cursor-pointer ${
                           isSelected
                             ? 'border-emerald-600 bg-emerald-50 ring-2 ring-emerald-500/20'
                             : 'border-slate-200 hover:border-slate-300 bg-white'
@@ -674,36 +550,61 @@ export default function OnboardingPage() {
                           Aa
                         </div>
                         <div className="text-xs font-bold text-slate-800">{t.name}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5 truncate">{t.badge}</div>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Launch Summary Card */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
-                <div className="font-bold text-slate-800 flex items-center justify-between">
-                  <span>Store Preview Summary:</span>
-                  <span className="text-emerald-700 font-mono text-[11px]">kadalink.in/store/{slug}</span>
+              {/* Delivery Fee Settings */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Standard Delivery Fee (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={flatFee}
+                    onChange={(e) => setFlatFee(Number(e.target.value))}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
                 </div>
-                <div className="text-slate-600 space-y-1 text-[11px]">
-                  <div>• <strong>Business:</strong> {storeName} ({TEMPLATES[selectedTemplate].name})</div>
-                  <div>• <strong>WhatsApp:</strong> +{whatsappNumber}</div>
-                  <div>• <strong>UPI Receiver:</strong> {upiId}</div>
-                  <div>• <strong>Includes:</strong> 2 starter products preloaded & ready to customize</div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Free Delivery Above (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={freeAboveThreshold}
+                    onChange={(e) => setFreeAboveThreshold(Number(e.target.value))}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
                 </div>
+              </div>
+
+              {/* Summary Box */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1.5 text-slate-600">
+                <div className="font-bold text-slate-900 flex justify-between">
+                  <span>Store Summary:</span>
+                  <span className="text-emerald-700 font-mono">kadalink.in/store/{slug}</span>
+                </div>
+                <div>• Name: <strong>{storeName}</strong></div>
+                <div>• WhatsApp Orders to: <strong>+{whatsappNumber}</strong></div>
+                <div>• Checkout: 1-Click Direct WhatsApp Ordering</div>
               </div>
 
               <div className="pt-4 flex items-center justify-between">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep(2)}
+                  onClick={() => setCurrentStep(1)}
                   className="px-5 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span>Back</span>
                 </button>
+
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -718,9 +619,8 @@ export default function OnboardingPage() {
         </form>
       </main>
 
-      {/* Footer */}
       <footer className="py-4 text-center text-[11px] text-slate-400">
-        © 2026 KadaLink Kerala • WhatsApp Commerce Platform
+        © 2026 KadaLink Kerala • WhatsApp Direct Commerce Platform
       </footer>
     </div>
   );
