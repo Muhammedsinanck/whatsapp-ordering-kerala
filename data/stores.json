@@ -631,5 +631,139 @@
     "createdAt": "2026-11-27T10:00:00.000Z",
     "updatedAt": "2026-11-27T10:00:00.000Z",
     "currency": "AED"
+  },
+  {
+    "id": "store-flawless-organics",
+    "slug": "flawless-organics",
+    "name": "Flawless Organics",
+    "tagline": "Pure Botanical Skincare & Handcrafted Organic Beauty Elixirs",
+    "description": "Handcrafted with cold-pressed botanical oils, raw organic butters, and therapeutic botanicals. 100% natural, cruelty-free, and formulated for radiant, healthy skin. Direct 1-click WhatsApp ordering.",
+    "whatsappNumber": "917677220044",
+    "ownerEmail": "hashimck7@gmail.com",
+    "ownerName": "Flawless Organics",
+    "ownerAvatar": "/images/flawless-organics/brand-logo.jpg",
+    "templateId": "boutique-elegance",
+    "logoUrl": "/images/flawless-organics/brand-logo.jpg",
+    "bannerUrl": "/images/flawless-organics/hero-banner.jpg",
+    "currency": "\u20b9",
+    "deliverySettings": {
+      "flatFee": 40,
+      "freeAboveThreshold": 499,
+      "deliveryNotes": "Pan-India express shipping within 24-48 hours | Free delivery on orders above \u20b9499"
+    },
+    "products": [
+      {
+        "id": "prod-flawless-1",
+        "name": "Organic Lash & Brow Growth Serum",
+        "description": "100% organic cold-pressed botanical infusion with Castor, Rosemary, and Argan oils to nourish, lengthen, and thicken eyelashes & brows.",
+        "price": 349,
+        "unit": "10 ml",
+        "imageUrl": "/images/flawless-organics/lash-brow-growth-serum.jpg",
+        "category": "Lash & Brow",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-2",
+        "name": "Whipped Shea & Mango Body Butter",
+        "description": "Luxuriously airy, deeply hydrating whipped butter made with unrefined African shea, mango butter, and sweet almond oil for velvety, glowing skin.",
+        "price": 449,
+        "unit": "150 gm",
+        "imageUrl": "/images/flawless-organics/whipped-body-butter.jpg",
+        "category": "Body Care",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-3",
+        "name": "Kumkumadi Miraculous Radiance Face Oil",
+        "description": "Traditional Ayurvedic glow elixir formulated with 24 precious herbs, Kashmiri saffron, and sandalwood to brighten complexion and fade dark spots.",
+        "price": 599,
+        "unit": "30 ml",
+        "imageUrl": "/images/flawless-organics/kumkumadi-face-oil.jpg",
+        "category": "Face Care",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-4",
+        "name": "Pure Damask Rose Water Facial Mist",
+        "description": "Steam-distilled pure organic rose hydrosol. Balances skin pH, tightens pores, and provides an instant refreshing dewy hydration boost.",
+        "price": 279,
+        "unit": "100 ml",
+        "imageUrl": "/images/flawless-organics/rose-water-mist.jpg",
+        "category": "Face Care",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-5",
+        "name": "Arabica Coffee & Brown Sugar Body Polish",
+        "description": "Invigorating exfoliating body scrub with freshly ground Arabica coffee, raw brown sugar, and cold-pressed coconut oil to buff away dead skin.",
+        "price": 399,
+        "unit": "200 gm",
+        "imageUrl": "/images/flawless-organics/coffee-body-scrub.jpg",
+        "category": "Body Care",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-6",
+        "name": "Golden Saffron & Sweet Almond Glow Body Oil",
+        "description": "Lightweight, non-greasy dry body elixir infused with saffron strands and sweet almond oil for a sun-kissed, satin glow.",
+        "price": 499,
+        "unit": "100 ml",
+        "imageUrl": "/images/flawless-organics/saffron-body-oil.jpg",
+        "category": "Body Care",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-7",
+        "name": "Gentle Raw Honey & Oat Cleansing Gel",
+        "description": "Mild, sulfate-free daily face wash with raw organic forest honey, colloidal oatmeal, and aloe vera for calm, hydrated, nourished skin.",
+        "price": 349,
+        "unit": "100 ml",
+        "imageUrl": "/images/flawless-organics/honey-oat-cleanser.jpg",
+        "category": "Face Care",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-8",
+        "name": "Bakuchiol & Botanical Squalane Night Serum",
+        "description": "Plant-based natural retinol alternative. Boosts collagen and smooths fine lines overnight without irritation or photosensitivity.",
+        "price": 549,
+        "unit": "30 ml",
+        "imageUrl": "/images/flawless-organics/bakuchiol-night-serum.jpg",
+        "category": "Face Care",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-9",
+        "name": "Beetroot & Rose Velvet Lip Butter Balm",
+        "description": "Nutrient-packed lip butter with natural beetroot extract, raw shea butter, and damask rose wax for soft, naturally tinted pink lips.",
+        "price": 199,
+        "unit": "15 gm",
+        "imageUrl": "/images/flawless-organics/beetroot-lip-balm.jpg",
+        "category": "Lip Care",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-10",
+        "name": "Brown Sugar & Vanilla Bean Lip Scrub",
+        "description": "Edible-grade gentle lip scrub with organic brown sugar, golden honey, and Madagascar vanilla to smooth and plump dry, chapped lips.",
+        "price": 189,
+        "unit": "20 gm",
+        "imageUrl": "/images/flawless-organics/brown-sugar-lip-scrub.jpg",
+        "category": "Lip Care",
+        "inStock": true
+      },
+      {
+        "id": "prod-flawless-11",
+        "name": "Rosemary & Biotin Root Stimulating Hair Oil",
+        "description": "Potent scalp treatment infused with organic rosemary leaves, fenugreek, bhringraj, and cold-pressed castor oil to promote hair density.",
+        "price": 479,
+        "unit": "100 ml",
+        "imageUrl": "/images/flawless-organics/rosemary-hair-oil.jpg",
+        "category": "Hair Care",
+        "inStock": true
+      }
+    ],
+    "createdAt": "2026-11-28T10:00:00.000Z",
+    "updatedAt": "2026-11-28T10:00:00.000Z"
   }
 ]
